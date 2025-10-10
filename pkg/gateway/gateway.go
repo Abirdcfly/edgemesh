@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	istiv1alpha3 "istio.io/client-go/pkg/apis/networking/v1alpha3"
+	istiv1alpha3 "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istioinformers "istio.io/client-go/pkg/informers/externalversions"
 	v1 "k8s.io/api/core/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"

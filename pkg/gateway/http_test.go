@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	networkingv1alpha3 "istio.io/api/networking/v1alpha3"
-	"istio.io/client-go/pkg/apis/networking/v1alpha3"
+	"istio.io/client-go/pkg/apis/networking/v1beta1"
 )
 
 func TestUriMatch(t *testing.T) {

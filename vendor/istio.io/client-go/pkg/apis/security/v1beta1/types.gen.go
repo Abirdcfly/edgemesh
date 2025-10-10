@@ -29,14 +29,19 @@ import (
 //
 // <!-- crd generation tags
 // +cue-gen:AuthorizationPolicy:groupName:security.istio.io
-// +cue-gen:AuthorizationPolicy:version:v1beta1
+// +cue-gen:AuthorizationPolicy:versions:v1beta1,v1
 // +cue-gen:AuthorizationPolicy:storageVersion
 // +cue-gen:AuthorizationPolicy:annotations:helm.sh/resource-policy=keep
 // +cue-gen:AuthorizationPolicy:labels:app=istio-pilot,chart=istio,istio=security,heritage=Tiller,release=istio
 // +cue-gen:AuthorizationPolicy:subresource:status
 // +cue-gen:AuthorizationPolicy:scope:Namespaced
-// +cue-gen:AuthorizationPolicy:resource:categories=istio-io,security-istio-io,plural=authorizationpolicies
+// +cue-gen:AuthorizationPolicy:resource:categories=istio-io,security-istio-io,shortNames=ap,plural=authorizationpolicies
 // +cue-gen:AuthorizationPolicy:preserveUnknownFields:false
+// +cue-gen:AuthorizationPolicy:printerColumn:name=Action,type=string,JSONPath=.spec.action,description="The operation to take."
+// +cue-gen:AuthorizationPolicy:printerColumn:name=Age,type=date,JSONPath=.metadata.creationTimestamp,description="CreationTimestamp is a timestamp
+// representing the server time when this object was created. It is not guaranteed to be set in happens-before order across separate operations.
+// Clients may not set this value. It is represented in RFC3339 form and is in UTC.
+// Populated by the system. Read-only. Null for lists. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata"
 // -->
 //
 // <!-- go code generation tags
@@ -45,6 +50,7 @@ import (
 // +genclient
 // +k8s:deepcopy-gen=true
 // -->
+// +kubebuilder:validation:XValidation:message="only one of targetRefs or selector can be set",rule="(has(self.selector)?1:0)+(has(self.targetRef)?1:0)+(has(self.targetRefs)?1:0)<=1"
 type AuthorizationPolicy struct {
 	v1.TypeMeta `json:",inline"`
 	// +optional
@@ -64,93 +70,122 @@ type AuthorizationPolicyList struct {
 	v1.TypeMeta `json:",inline"`
 	// +optional
 	v1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
-	Items       []AuthorizationPolicy `json:"items" protobuf:"bytes,2,rep,name=items"`
+	Items       []*AuthorizationPolicy `json:"items" protobuf:"bytes,2,rep,name=items"`
 }
 
 //
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// PeerAuthentication defines how traffic will be tunneled (or not) to the sidecar.
+// PeerAuthentication defines mutual TLS (mTLS) requirements for incoming connections.
+//
+// In sidecar mode, PeerAuthentication determines whether or not mTLS is allowed or required
+// for connections to an Envoy proxy sidecar.
+//
+// In ambient mode, security is transparently enabled for a pod by the ztunnel node agent.
+// (Traffic between proxies uses the HBONE protocol, which includes encryption with mTLS.)
+// Because of this, `DISABLE` mode is not supported.
+// `STRICT` mode is useful to ensure that connections that bypass the mesh are not possible.
 //
 // Examples:
 //
-// Policy to allow mTLS traffic for all workloads under namespace `foo`:
+// Policy to require mTLS traffic for all workloads under namespace `foo`:
 // ```yaml
-// apiVersion: security.istio.io/v1beta1
+// apiVersion: security.istio.io/v1
 // kind: PeerAuthentication
 // metadata:
-//   name: default
-//   namespace: foo
+//
+//	name: default
+//	namespace: foo
+//
 // spec:
-//   mtls:
-//     mode: STRICT
+//
+//	mtls:
+//	  mode: STRICT
+//
 // ```
 // For mesh level, put the policy in root-namespace according to your Istio installation.
 //
-// Policies to allow both mTLS & plaintext traffic for all workloads under namespace `foo`, but
+// Policies to allow both mTLS and plaintext traffic for all workloads under namespace `foo`, but
 // require mTLS for workload `finance`.
 // ```yaml
-// apiVersion: security.istio.io/v1beta1
+// apiVersion: security.istio.io/v1
 // kind: PeerAuthentication
 // metadata:
-//   name: default
-//   namespace: foo
+//
+//	name: default
+//	namespace: foo
+//
 // spec:
-//   mtls:
-//     mode: PERMISSIVE
+//
+//	mtls:
+//	  mode: PERMISSIVE
+//
 // ---
-// apiVersion: security.istio.io/v1beta1
+// apiVersion: security.istio.io/v1
 // kind: PeerAuthentication
 // metadata:
-//   name: default
-//   namespace: foo
+//
+//	name: finance
+//	namespace: foo
+//
 // spec:
-//   selector:
-//     matchLabels:
-//       app: finance
-//   mtls:
-//     mode: STRICT
+//
+//	selector:
+//	  matchLabels:
+//	    app: finance
+//	mtls:
+//	  mode: STRICT
+//
 // ```
-// Policy to allow mTLS strict for all workloads, but leave port 8080 to
-// plaintext:
+// Policy that enables strict mTLS for all `finance` workloads, but leaves the port `8080` to
+// plaintext. Note the port value in the `portLevelMtls` field refers to the port
+// of the workload, not the port of the Kubernetes service.
 // ```yaml
-// apiVersion: security.istio.io/v1beta1
+// apiVersion: security.istio.io/v1
 // kind: PeerAuthentication
 // metadata:
-//   name: default
-//   namespace: foo
+//
+//	name: default
+//	namespace: foo
+//
 // spec:
-//   selector:
-//     matchLabels:
-//       app: finance
-//   mtls:
-//     mode: STRICT
-//   portLevelMtls:
-//     8080:
-//       mode: DISABLE
+//
+//	selector:
+//	  matchLabels:
+//	    app: finance
+//	mtls:
+//	  mode: STRICT
+//	portLevelMtls:
+//	  8080:
+//	    mode: DISABLE
+//
 // ```
-// Policy to inherit mTLS mode from namespace (or mesh) settings, and overwrite
-// settings for port 8080
+// Policy that inherits mTLS mode from namespace (or mesh) settings, and disables
+// mTLS for workload port `8080`.
 // ```yaml
-// apiVersion: security.istio.io/v1beta1
+// apiVersion: security.istio.io/v1
 // kind: PeerAuthentication
 // metadata:
-//   name: default
-//   namespace: foo
+//
+//	name: default
+//	namespace: foo
+//
 // spec:
-//   selector:
-//     matchLabels:
-//       app: finance
-//   mtls:
-//     mode: UNSET
-//   portLevelMtls:
-//     8080:
-//       mode: DISABLE
+//
+//	selector:
+//	  matchLabels:
+//	    app: finance
+//	mtls:
+//	  mode: UNSET
+//	portLevelMtls:
+//	  8080:
+//	    mode: DISABLE
+//
 // ```
 //
 // <!-- crd generation tags
 // +cue-gen:PeerAuthentication:groupName:security.istio.io
-// +cue-gen:PeerAuthentication:version:v1beta1
+// +cue-gen:PeerAuthentication:versions:v1beta1,v1
 // +cue-gen:PeerAuthentication:storageVersion
 // +cue-gen:PeerAuthentication:annotations:helm.sh/resource-policy=keep
 // +cue-gen:PeerAuthentication:labels:app=istio-pilot,chart=istio,istio=security,heritage=Tiller,release=istio
@@ -171,6 +206,7 @@ type AuthorizationPolicyList struct {
 // +genclient
 // +k8s:deepcopy-gen=true
 // -->
+// +kubebuilder:validation:XValidation:message="portLevelMtls requires selector",rule="(has(self.selector) && has(self.selector.matchLabels) && self.selector.matchLabels.size() > 0) || !has(self.portLevelMtls)"
 type PeerAuthentication struct {
 	v1.TypeMeta `json:",inline"`
 	// +optional
@@ -190,10 +226,10 @@ type PeerAuthenticationList struct {
 	v1.TypeMeta `json:",inline"`
 	// +optional
 	v1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
-	Items       []PeerAuthentication `json:"items" protobuf:"bytes,2,rep,name=items"`
+	Items       []*PeerAuthentication `json:"items" protobuf:"bytes,2,rep,name=items"`
 }
 
-// please upgrade the proto package
+//
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // RequestAuthentication defines what request authentication methods are supported by a workload.
@@ -206,32 +242,40 @@ type PeerAuthenticationList struct {
 // - Require JWT for all request for workloads that have label `app:httpbin`
 //
 // ```yaml
-// apiVersion: security.istio.io/v1beta1
+// apiVersion: security.istio.io/v1
 // kind: RequestAuthentication
 // metadata:
-//   name: httpbin
-//   namespace: foo
+//
+//	name: httpbin
+//	namespace: foo
+//
 // spec:
-//   selector:
-//     matchLabels:
-//       app: httpbin
-//   jwtRules:
-//   - issuer: "issuer-foo"
-//     jwksUri: https://example.com/.well-known/jwks.json
+//
+//	selector:
+//	  matchLabels:
+//	    app: httpbin
+//	jwtRules:
+//	- issuer: "issuer-foo"
+//	  jwksUri: https://example.com/.well-known/jwks.json
+//
 // ---
-// apiVersion: security.istio.io/v1beta1
+// apiVersion: security.istio.io/v1
 // kind: AuthorizationPolicy
 // metadata:
-//   name: httpbin
-//   namespace: foo
+//
+//	name: httpbin
+//	namespace: foo
+//
 // spec:
-//   selector:
-//     matchLabels:
-//       app: httpbin
-//   rules:
-//   - from:
-//     - source:
-//         requestPrincipals: ["*"]
+//
+//	selector:
+//	  matchLabels:
+//	    app: httpbin
+//	rules:
+//	- from:
+//	  - source:
+//	      requestPrincipals: ["*"]
+//
 // ```
 //
 // - A policy in the root namespace ("istio-system" by default) applies to workloads in all namespaces
@@ -239,26 +283,34 @@ type PeerAuthenticationList struct {
 // valid JWT token.
 //
 // ```yaml
-// apiVersion: security.istio.io/v1beta1
+// apiVersion: security.istio.io/v1
 // kind: RequestAuthentication
 // metadata:
-//   name: req-authn-for-all
-//   namespace: istio-system
+//
+//	name: req-authn-for-all
+//	namespace: istio-system
+//
 // spec:
-//   jwtRules:
-//   - issuer: "issuer-foo"
-//     jwksUri: https://example.com/.well-known/jwks.json
+//
+//	jwtRules:
+//	- issuer: "issuer-foo"
+//	  jwksUri: https://example.com/.well-known/jwks.json
+//
 // ---
-// apiVersion: security.istio.io/v1beta1
+// apiVersion: security.istio.io/v1
 // kind: AuthorizationPolicy
 // metadata:
-//   name: require-jwt-for-all
-//   namespace: istio-system
+//
+//	name: require-jwt-for-all
+//	namespace: istio-system
+//
 // spec:
-//   rules:
-//   - from:
-//     - source:
-//         requestPrincipals: ["*"]
+//
+//	rules:
+//	- from:
+//	  - source:
+//	      requestPrincipals: ["*"]
+//
 // ```
 //
 // - The next example shows how to set a different JWT requirement for a different `host`. The `RequestAuthentication`
@@ -266,41 +318,49 @@ type PeerAuthenticationList struct {
 // set from the OpenID Connect spec).
 //
 // ```yaml
-// apiVersion: security.istio.io/v1beta1
+// apiVersion: security.istio.io/v1
 // kind: RequestAuthentication
 // metadata:
-//   name: httpbin
-//   namespace: foo
+//
+//	name: httpbin
+//	namespace: foo
+//
 // spec:
-//   selector:
-//     matchLabels:
-//       app: httpbin
-//   jwtRules:
-//   - issuer: "issuer-foo"
-//   - issuer: "issuer-bar"
+//
+//	selector:
+//	  matchLabels:
+//	    app: httpbin
+//	jwtRules:
+//	- issuer: "issuer-foo"
+//	- issuer: "issuer-bar"
+//
 // ---
-// apiVersion: security.istio.io/v1beta1
+// apiVersion: security.istio.io/v1
 // kind: AuthorizationPolicy
 // metadata:
-//   name: httpbin
-//   namespace: foo
+//
+//	name: httpbin
+//	namespace: foo
+//
 // spec:
-//   selector:
-//     matchLabels:
-//       app: httpbin
-//   rules:
-//   - from:
-//     - source:
-//         requestPrincipals: ["issuer-foo/*"]
-//     to:
-//     - operation:
-//         hosts: ["example.com"]
-//   - from:
-//     - source:
-//         requestPrincipals: ["issuer-bar/*"]
-//     to:
-//     - operation:
-//         hosts: ["another-host.com"]
+//
+//	selector:
+//	  matchLabels:
+//	    app: httpbin
+//	rules:
+//	- from:
+//	  - source:
+//	      requestPrincipals: ["issuer-foo/*"]
+//	  to:
+//	  - operation:
+//	      hosts: ["example.com"]
+//	- from:
+//	  - source:
+//	      requestPrincipals: ["issuer-bar/*"]
+//	  to:
+//	  - operation:
+//	      hosts: ["another-host.com"]
+//
 // ```
 //
 // - You can fine tune the authorization policy to set different requirement per path. For example,
@@ -308,30 +368,36 @@ type PeerAuthenticationList struct {
 // authorization policy could be:
 //
 // ```yaml
-// apiVersion: security.istio.io/v1beta1
+// apiVersion: security.istio.io/v1
 // kind: AuthorizationPolicy
 // metadata:
-//   name: httpbin
-//   namespace: foo
+//
+//	name: httpbin
+//	namespace: foo
+//
 // spec:
-//   selector:
-//     matchLabels:
-//       app: httpbin
-//   rules:
-//   - from:
-//     - source:
-//         requestPrincipals: ["*"]
-//   - to:
-//     - operation:
-//         paths: ["/healthz"]
+//
+//	selector:
+//	  matchLabels:
+//	    app: httpbin
+//	rules:
+//	- from:
+//	  - source:
+//	      requestPrincipals: ["*"]
+//	- to:
+//	  - operation:
+//	      paths: ["/healthz"]
+//
 // ```
 //
 // [Experimental] Routing based on derived [metadata](https://istio.io/latest/docs/reference/config/security/conditions/)
 // is now supported. A prefix '@' is used to denote a match against internal metadata instead of the headers in the request.
 // Currently this feature is only supported for the following metadata:
 //
-// - `request.auth.claims.{claim-name}[.{sub-claim}]*` which are extracted from validated JWT tokens. The claim name
-// currently does not support the `.` character. Examples: `request.auth.claims.sub` and `request.auth.claims.name.givenName`.
+// - `request.auth.claims.{claim-name}[.{nested-claim}]*` which are extracted from validated JWT tokens.
+// Use the `.` or `[]` as a separator for nested claim names.
+// Examples: `request.auth.claims.sub`, `request.auth.claims.name.givenName` and `request.auth.claims[foo.com/name]`.
+// For more information, see [JWT claim based routing](https://istio.io/latest/docs/tasks/security/authentication/jwt-route/).
 //
 // The use of matches against JWT claim metadata is only supported in Gateways. The following example shows:
 //
@@ -340,62 +406,74 @@ type PeerAuthenticationList struct {
 // - VirtualService to route the request based on the "sub" claim.
 //
 // ```yaml
-// apiVersion: security.istio.io/v1beta1
+// apiVersion: security.istio.io/v1
 // kind: RequestAuthentication
 // metadata:
-//   name: jwt-on-ingress
-//   namespace: istio-system
+//
+//	name: jwt-on-ingress
+//	namespace: istio-system
+//
 // spec:
-//  selector:
-//    matchLabels:
-//      app: istio-ingressgateway
-//   jwtRules:
-//   - issuer: "example.com"
-//     jwksUri: https://example.com/.well-known/jwks.json
+//
+//	selector:
+//	  matchLabels:
+//	    app: istio-ingressgateway
+//	jwtRules:
+//	- issuer: "example.com"
+//	  jwksUri: https://example.com/.well-known/jwks.json
+//
 // ---
-// apiVersion: security.istio.io/v1beta1
+// apiVersion: security.istio.io/v1
 // kind: AuthorizationPolicy
 // metadata:
-//   name: require-jwt
-//   namespace: istio-system
+//
+//	name: require-jwt
+//	namespace: istio-system
+//
 // spec:
-//  selector:
-//    matchLabels:
-//      app: istio-ingressgateway
-//   rules:
-//   - from:
-//     - source:
-//         requestPrincipals: ["*"]
+//
+//	selector:
+//	  matchLabels:
+//	    app: istio-ingressgateway
+//	rules:
+//	- from:
+//	  - source:
+//	      requestPrincipals: ["*"]
+//
 // ---
-// apiVersion: networking.istio.io/v1alpha3
+// apiVersion: networking.istio.io/v1
 // kind: VirtualService
 // metadata:
-//   name: route-jwt
+//
+//	name: route-jwt
+//
 // spec:
-//   hosts:
-//   - foo.prod.svc.cluster.local
-//   gateways:
-//   - istio-ingressgateway
-//   http:
-//   - name: "v2"
-//     match:
-//     - headers:
-//         "@request.auth.claims.sub":
-//           exact: "dev"
-//     route:
-//     - destination:
-//         host: foo.prod.svc.cluster.local
-//         subset: v2
-//   - name: "default"
-//     route:
-//     - destination:
-//         host: foo.prod.svc.cluster.local
-//         subset: v1
+//
+//	hosts:
+//	- foo.prod.svc.cluster.local
+//	gateways:
+//	- istio-ingressgateway
+//	http:
+//	- name: "v2"
+//	  match:
+//	  - headers:
+//	      "@request.auth.claims.sub":
+//	        exact: "dev"
+//	  route:
+//	  - destination:
+//	      host: foo.prod.svc.cluster.local
+//	      subset: v2
+//	- name: "default"
+//	  route:
+//	  - destination:
+//	      host: foo.prod.svc.cluster.local
+//	      subset: v1
+//
 // ```
 //
 // <!-- crd generation tags
 // +cue-gen:RequestAuthentication:groupName:security.istio.io
-// +cue-gen:RequestAuthentication:version:v1beta1
+// +cue-gen:RequestAuthentication:versions:v1beta1,v1
 // +cue-gen:RequestAuthentication:storageVersion
 // +cue-gen:RequestAuthentication:annotations:helm.sh/resource-policy=keep
 // +cue-gen:RequestAuthentication:labels:app=istio-pilot,chart=istio,istio=security,heritage=Tiller,release=istio
@@ -411,6 +489,7 @@ type PeerAuthenticationList struct {
 // +genclient
 // +k8s:deepcopy-gen=true
 // -->
+// +kubebuilder:validation:XValidation:message="only one of targetRefs or selector can be set",rule="(has(self.selector)?1:0)+(has(self.targetRef)?1:0)+(has(self.targetRefs)?1:0)<=1"
 type RequestAuthentication struct {
 	v1.TypeMeta `json:",inline"`
 	// +optional
@@ -430,5 +509,5 @@ type RequestAuthenticationList struct {
 	v1.TypeMeta `json:",inline"`
 	// +optional
 	v1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
-	Items       []RequestAuthentication `json:"items" protobuf:"bytes,2,rep,name=items"`
+	Items       []*RequestAuthentication `json:"items" protobuf:"bytes,2,rep,name=items"`
 }

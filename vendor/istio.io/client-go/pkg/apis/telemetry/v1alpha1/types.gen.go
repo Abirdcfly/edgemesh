@@ -27,7 +27,7 @@ import (
 
 // <!-- crd generation tags
 // +cue-gen:Telemetry:groupName:telemetry.istio.io
-// +cue-gen:Telemetry:version:v1alpha1
+// +cue-gen:Telemetry:versions:v1alpha1,v1
 // +cue-gen:Telemetry:storageVersion
 // +cue-gen:Telemetry:annotations:helm.sh/resource-policy=keep
 // +cue-gen:Telemetry:labels:app=istio-pilot,chart=istio,istio=telemetry,heritage=Tiller,release=istio
@@ -35,10 +35,12 @@ import (
 // +cue-gen:Telemetry:scope:Namespaced
 // +cue-gen:Telemetry:resource:categories=istio-io,telemetry-istio-io,shortNames=telemetry,plural=telemetries
 // +cue-gen:Telemetry:preserveUnknownFields:false
-// +cue-gen:Telemetry:printerColumn:name=Age,type=date,JSONPath=.metadata.creationTimestamp,description="CreationTimestamp is a timestamp
-// representing the server time when this object was created. It is not guaranteed to be set in happens-before order across separate operations.
-// Clients may not set this value. It is represented in RFC3339 form and is in UTC.
-// Populated by the system. Read-only. Null for lists. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata"
+// +cue-gen:Telemetry:printerColumn:name=Age,type=date,JSONPath=.metadata.creationTimestamp,description="CreationTimestamp
+// is a timestamp representing the server time when this object was created. It
+// is not guaranteed to be set in happens-before order across separate
+// operations. Clients may not set this value. It is represented in RFC3339 form
+// and is in UTC. Populated by the system. Read-only. Null for lists. More info:
+// https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata"
 // -->
 //
 // <!-- go code generation tags
@@ -47,6 +49,7 @@ import (
 // +genclient
 // +k8s:deepcopy-gen=true
 // -->
+// +kubebuilder:validation:XValidation:message="only one of targetRefs or selector can be set",rule="(has(self.selector)?1:0)+(has(self.targetRef)?1:0)+(has(self.targetRefs)?1:0)<=1"
 type Telemetry struct {
 	v1.TypeMeta `json:",inline"`
 	// +optional
@@ -66,5 +69,5 @@ type TelemetryList struct {
 	v1.TypeMeta `json:",inline"`
 	// +optional
 	v1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
-	Items       []Telemetry `json:"items" protobuf:"bytes,2,rep,name=items"`
+	Items       []*Telemetry `json:"items" protobuf:"bytes,2,rep,name=items"`
 }

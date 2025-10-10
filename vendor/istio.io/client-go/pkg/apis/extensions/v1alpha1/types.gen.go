@@ -30,12 +30,14 @@ import (
 //
 // <!-- crd generation tags
 // +cue-gen:WasmPlugin:groupName:extensions.istio.io
-// +cue-gen:WasmPlugin:version:v1alpha1
+// +cue-gen:WasmPlugin:versions:v1alpha1
 // +cue-gen:WasmPlugin:storageVersion
 // +cue-gen:WasmPlugin:annotations:helm.sh/resource-policy=keep
 // +cue-gen:WasmPlugin:labels:app=istio-pilot,chart=istio,heritage=Tiller,release=istio
 // +cue-gen:WasmPlugin:subresource:status
+// +cue-gen:WasmPlugin:spec:required
 // +cue-gen:WasmPlugin:scope:Namespaced
+// +cue-gen:WasmPlugin:releaseChannel:extended
 // +cue-gen:WasmPlugin:resource:categories=istio-io,extensions-istio-io
 // +cue-gen:WasmPlugin:preserveUnknownFields:pluginConfig
 // +cue-gen:WasmPlugin:printerColumn:name=Age,type=date,JSONPath=.metadata.creationTimestamp,description="CreationTimestamp is a timestamp
@@ -50,6 +52,7 @@ import (
 // +genclient
 // +k8s:deepcopy-gen=true
 // -->
+// +kubebuilder:validation:XValidation:message="only one of targetRefs or selector can be set",rule="(has(self.selector)?1:0)+(has(self.targetRef)?1:0)+(has(self.targetRefs)?1:0)<=1"
 type WasmPlugin struct {
 	v1.TypeMeta `json:",inline"`
 	// +optional
@@ -69,5 +72,5 @@ type WasmPluginList struct {
 	v1.TypeMeta `json:",inline"`
 	// +optional
 	v1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
-	Items       []WasmPlugin `json:"items" protobuf:"bytes,2,rep,name=items"`
+	Items       []*WasmPlugin `json:"items" protobuf:"bytes,2,rep,name=items"`
 }

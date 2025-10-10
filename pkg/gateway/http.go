@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	networkingv1alpha3 "istio.io/api/networking/v1alpha3"
-	istioapi "istio.io/client-go/pkg/apis/networking/v1alpha3"
+	istioapi "istio.io/client-go/pkg/apis/networking/v1beta1"
 	"k8s.io/klog/v2"
 )
 
