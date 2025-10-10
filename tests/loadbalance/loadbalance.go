@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	istioapi "istio.io/client-go/pkg/apis/networking/v1alpha3"
+	istioapi "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istio "istio.io/client-go/pkg/clientset/versioned"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -89,7 +89,7 @@ func (t *Tester) Cleanup() {
 		}
 	}
 	if t.DestinationRule != nil {
-		err := t.IstioClient.NetworkingV1alpha3().DestinationRules(t.DestinationRule.Namespace).Delete(context.Background(), t.DestinationRule.Name, metav1.DeleteOptions{})
+		err := t.IstioClient.NetworkingV1beta1().DestinationRules(t.DestinationRule.Namespace).Delete(context.Background(), t.DestinationRule.Name, metav1.DeleteOptions{})
 		if err != nil {
 			klog.ErrorS(err, "Failed to delete destination rule")
 		}
@@ -142,7 +142,7 @@ func main() {
 			klog.ErrorS(err, "Failed to parse destination rule")
 			return
 		}
-		t.DestinationRule, err = t.IstioClient.NetworkingV1alpha3().DestinationRules(*namespace).Create(context.Background(), dr, metav1.CreateOptions{})
+		t.DestinationRule, err = t.IstioClient.NetworkingV1beta1().DestinationRules(*namespace).Create(context.Background(), dr, metav1.CreateOptions{})
 		if err != nil {
 			klog.ErrorS(err, "Failed to create destination rule")
 			return

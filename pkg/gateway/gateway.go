@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	istiv1alpha3 "istio.io/client-go/pkg/apis/networking/v1alpha3"
+	istiv1alpha3 "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istioinformers "istio.io/client-go/pkg/informers/externalversions"
 	v1 "k8s.io/api/core/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -31,7 +31,7 @@ func (gw *EdgeGateway) Run() error {
 	go gw.runSecret(secretInformer.Informer().HasSynced, gw.stopCh)
 
 	istioInformerFactory := istioinformers.NewSharedInformerFactory(gw.istioClient, gw.syncPeriod)
-	gwInformer := istioInformerFactory.Networking().V1alpha3().Gateways()
+	gwInformer := istioInformerFactory.Networking().V1beta1().Gateways()
 	gwInformer.Informer().AddEventHandlerWithResyncPeriod(
 		toolscache.ResourceEventHandlerFuncs{
 			AddFunc:    gw.handleAddGateway,
@@ -41,7 +41,7 @@ func (gw *EdgeGateway) Run() error {
 		gw.syncPeriod,
 	)
 	go gw.runGateway(gwInformer.Informer().HasSynced, gw.stopCh)
-	vsInformer := istioInformerFactory.Networking().V1alpha3().VirtualServices()
+	vsInformer := istioInformerFactory.Networking().V1beta1().VirtualServices()
 	vsInformer.Informer().AddEventHandlerWithResyncPeriod(
 		toolscache.ResourceEventHandlerFuncs{
 			AddFunc:    gw.handleAddVirtualService,

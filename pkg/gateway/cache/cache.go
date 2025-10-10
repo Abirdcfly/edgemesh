@@ -3,7 +3,7 @@ package cache
 import (
 	"sync"
 
-	"istio.io/client-go/pkg/apis/networking/v1alpha3"
+	"istio.io/client-go/pkg/apis/networking/v1beta1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 )
@@ -45,7 +45,7 @@ func RangeSecrets(fn func(key, value interface{}) bool) {
 	secretCache.Range(fn)
 }
 
-func UpdateVirtualService(key string, vs *v1alpha3.VirtualService) {
+func UpdateVirtualService(key string, vs *v1beta1.VirtualService) {
 	klog.Infof("Add or update virtual service %s in cache", key)
 	virtualServiceCache.Store(key, vs)
 }
@@ -55,13 +55,13 @@ func DeleteVirtualService(key string) {
 	virtualServiceCache.Delete(key)
 }
 
-func GetVirtualService(key string) (*v1alpha3.VirtualService, bool) {
+func GetVirtualService(key string) (*v1beta1.VirtualService, bool) {
 	obj, ok := virtualServiceCache.Load(key)
 	if !ok {
 		klog.Errorf("Virtual service %s not found", key)
 		return nil, false
 	}
-	vs, ok := obj.(*v1alpha3.VirtualService)
+	vs, ok := obj.(*v1beta1.VirtualService)
 	if !ok {
 		klog.Errorf("Virtual service %s type invalid", key)
 		return nil, false

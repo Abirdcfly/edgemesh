@@ -4,7 +4,7 @@ import (
 	"crypto/tls"
 	"fmt"
 
-	apiv1alpha3 "istio.io/api/networking/v1alpha3"
+	apiv1alpha3 "istio.io/api/networking/v1beta1"
 	v1 "k8s.io/api/core/v1"
 )
 

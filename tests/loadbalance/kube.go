@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	istioapi "istio.io/client-go/pkg/apis/networking/v1alpha3"
+	istioapi "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istio "istio.io/client-go/pkg/clientset/versioned"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"

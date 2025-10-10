@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	istiov1alpha3 "istio.io/api/networking/v1alpha3"
-	istioapi "istio.io/client-go/pkg/apis/networking/v1alpha3"
+	istiov1alpha3 "istio.io/api/networking/v1beta1"
+	istioapi "istio.io/client-go/pkg/apis/networking/v1beta1"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
