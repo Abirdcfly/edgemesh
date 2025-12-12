@@ -6,10 +6,8 @@
 package network
 
 import (
-	"bytes"
 	"context"
 	"io"
-	"sort"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -36,10 +34,12 @@ const (
 	DirOutbound
 )
 
+const unrecognized = "(unrecognized)"
+
 func (d Direction) String() string {
 	str := [...]string{"Unknown", "Inbound", "Outbound"}
 	if d < 0 || int(d) >= len(str) {
-		return "(unrecognized)"
+		return unrecognized
 	}
 	return str[d]
 }
@@ -55,18 +55,25 @@ const (
 	// Connected means has an open, live connection to peer
 	Connected
 
+	// Deprecated: CanConnect is deprecated and will be removed in a future release.
+	//
 	// CanConnect means recently connected to peer, terminated gracefully
 	CanConnect
 
+	// Deprecated: CannotConnect is deprecated and will be removed in a future release.
+	//
 	// CannotConnect means recently attempted connecting but failed to connect.
 	// (should signal "made effort, failed")
 	CannotConnect
+
+	// Limited means we have a transient connection to the peer, but aren't fully connected.
+	Limited
 )
 
 func (c Connectedness) String() string {
-	str := [...]string{"NotConnected", "Connected", "CanConnect", "CannotConnect"}
+	str := [...]string{"NotConnected", "Connected", "CanConnect", "CannotConnect", "Limited"}
 	if c < 0 || int(c) >= len(str) {
-		return "(unrecognized)"
+		return unrecognized
 	}
 	return str[c]
 }
@@ -93,7 +100,7 @@ const (
 func (r Reachability) String() string {
 	str := [...]string{"Unknown", "Public", "Private"}
 	if r < 0 || int(r) >= len(str) {
-		return "(unrecognized)"
+		return unrecognized
 	}
 	return str[r]
 }
@@ -111,8 +118,10 @@ type Stats struct {
 	Direction Direction
 	// Opened is the timestamp when this connection was opened.
 	Opened time.Time
-	// Transient indicates that this connection is transient and may be closed soon.
-	Transient bool
+	// Limited indicates that this connection is Limited. It maybe limited by
+	// bytes or time. In practice, this is a connection formed over a circuit v2
+	// relay.
+	Limited bool
 	// Extra stores additional metadata about this connection.
 	Extra map[interface{}]interface{}
 }
@@ -130,7 +139,7 @@ type Network interface {
 	io.Closer
 
 	// SetStreamHandler sets the handler for new streams opened by the
-	// remote side. This operation is threadsafe.
+	// remote side. This operation is thread-safe.
 	SetStreamHandler(StreamHandler)
 
 	// NewStream returns a new stream to given peer p.
@@ -150,6 +159,14 @@ type Network interface {
 
 	// ResourceManager returns the ResourceManager associated with this network
 	ResourceManager() ResourceManager
+}
+
+type MultiaddrDNSResolver interface {
+	// ResolveDNSAddr resolves the first /dnsaddr component in a multiaddr.
+	// Recurisvely resolves DNSADDRs up to the recursion limit
+	ResolveDNSAddr(ctx context.Context, expectedPeerID peer.ID, maddr ma.Multiaddr, recursionLimit, outputLimit int) ([]ma.Multiaddr, error)
+	// ResolveDNSComponent resolves the first /{dns,dns4,dns6} component in a multiaddr.
+	ResolveDNSComponent(ctx context.Context, maddr ma.Multiaddr, outputLimit int) ([]ma.Multiaddr, error)
 }
 
 // Dialer represents a service that can dial out to peers
@@ -185,6 +202,9 @@ type Dialer interface {
 	// Notify/StopNotify register and unregister a notifiee for signals
 	Notify(Notifiee)
 	StopNotify(Notifiee)
+
+	// CanDial returns whether the dialer can dial peer p at addr
+	CanDial(p peer.ID, addr ma.Multiaddr) bool
 }
 
 // AddrDelay provides an address along with the delay after which the address
@@ -196,23 +216,3 @@ type AddrDelay struct {
 
 // DialRanker provides a schedule of dialing the provided addresses
 type DialRanker func([]ma.Multiaddr) []AddrDelay
-
-// DedupAddrs deduplicates addresses in place, leave only unique addresses.
-// It doesn't allocate.
-func DedupAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
-	if len(addrs) == 0 {
-		return addrs
-	}
-	sort.Slice(addrs, func(i, j int) bool { return bytes.Compare(addrs[i].Bytes(), addrs[j].Bytes()) < 0 })
-	idx := 1
-	for i := 1; i < len(addrs); i++ {
-		if !addrs[i-1].Equal(addrs[i]) {
-			addrs[idx] = addrs[i]
-			idx++
-		}
-	}
-	for i := idx; i < len(addrs); i++ {
-		addrs[i] = nil
-	}
-	return addrs[:idx]
-}

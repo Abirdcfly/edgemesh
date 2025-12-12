@@ -59,7 +59,7 @@ type UpdatedAddress struct {
 //
 // In addition to the above, EvtLocalAddressesUpdated also contains the updated peer.PeerRecord
 // for the Current set of listen addresses, wrapped in a record.Envelope and signed by the Host's private key.
-// This record can be shared with other peers to inform them of what we believe are our  diallable addresses
+// This record can be shared with other peers to inform them of what we believe are our diallable addresses
 // a secure and authenticated way.
 type EvtLocalAddressesUpdated struct {
 
@@ -80,4 +80,9 @@ type EvtLocalAddressesUpdated struct {
 	// SignedPeerRecord contains our own updated peer.PeerRecord, listing the addresses enumerated in Current.
 	// wrapped in a record.Envelope and signed by the Host's private key.
 	SignedPeerRecord *record.Envelope
+}
+
+// EvtAutoRelayAddrsUpdated is sent by the autorelay when the node's relay addresses are updated
+type EvtAutoRelayAddrsUpdated struct {
+	RelayAddrs []ma.Multiaddr
 }

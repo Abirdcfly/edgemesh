@@ -3,6 +3,7 @@ package network
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"time"
@@ -10,6 +11,49 @@ import (
 
 // ErrReset is returned when reading or writing on a reset stream.
 var ErrReset = errors.New("stream reset")
+
+type StreamErrorCode uint32
+
+type StreamError struct {
+	ErrorCode      StreamErrorCode
+	Remote         bool
+	TransportError error
+}
+
+func (s *StreamError) Error() string {
+	side := "local"
+	if s.Remote {
+		side = "remote"
+	}
+	if s.TransportError != nil {
+		return fmt.Sprintf("stream reset (%s): code: 0x%x: transport error: %s", side, s.ErrorCode, s.TransportError)
+	}
+	return fmt.Sprintf("stream reset (%s): code: 0x%x", side, s.ErrorCode)
+}
+
+func (s *StreamError) Is(target error) bool {
+	if tse, ok := target.(*StreamError); ok {
+		return tse.ErrorCode == s.ErrorCode && tse.Remote == s.Remote
+	}
+	return false
+}
+
+func (s *StreamError) Unwrap() []error {
+	return []error{ErrReset, s.TransportError}
+}
+
+const (
+	StreamNoError                   StreamErrorCode = 0
+	StreamProtocolNegotiationFailed StreamErrorCode = 0x1001
+	StreamResourceLimitExceeded     StreamErrorCode = 0x1002
+	StreamRateLimited               StreamErrorCode = 0x1003
+	StreamProtocolViolation         StreamErrorCode = 0x1004
+	StreamSupplanted                StreamErrorCode = 0x1005
+	StreamGarbageCollected          StreamErrorCode = 0x1006
+	StreamShutdown                  StreamErrorCode = 0x1007
+	StreamGated                     StreamErrorCode = 0x1008
+	StreamCodeOutOfRange            StreamErrorCode = 0x1009
+)
 
 // MuxedStream is a bidirectional io pipe within a connection.
 type MuxedStream interface {
@@ -56,6 +100,11 @@ type MuxedStream interface {
 	// side to hang up and go away.
 	Reset() error
 
+	// ResetWithError aborts both ends of the stream with `errCode`. `errCode` is sent
+	// to the peer on a best effort basis. For transports that do not support sending
+	// error codes to remote peer, the behavior is identical to calling Reset
+	ResetWithError(errCode StreamErrorCode) error
+
 	SetDeadline(time.Time) error
 	SetReadDeadline(time.Time) error
 	SetWriteDeadline(time.Time) error
@@ -75,6 +124,10 @@ type MuxedConn interface {
 	// Close closes the stream muxer and the the underlying net.Conn.
 	io.Closer
 
+	// CloseWithError closes the connection with errCode. The errCode is sent
+	// to the peer.
+	CloseWithError(errCode ConnErrorCode) error
+
 	// IsClosed returns whether a connection is fully closed, so it can
 	// be garbage collected.
 	IsClosed() bool
@@ -84,6 +137,20 @@ type MuxedConn interface {
 
 	// AcceptStream accepts a stream opened by the other side.
 	AcceptStream() (MuxedStream, error)
+
+	// As finds the first conn in MuxedConn's wrapped types that matches target,
+	// and if one is found, sets target to that conn value and returns true.
+	// Otherwise, it returns false. Similar to errors.As.
+	//
+	// target must be a pointer to the type you are matching against.
+	//
+	// This is an EXPERIMENTAL API. Getting access to the underlying type can
+	// lead to hard to debug issues. For example, if you mutate connection state
+	// on the underlying type, hooks that relied on only mutating that state
+	// from the wrapped connection would never be called.
+	//
+	// You very likely do not need to use this method.
+	As(target any) bool
 }
 
 // Multiplexer wraps a net.Conn with a stream multiplexing

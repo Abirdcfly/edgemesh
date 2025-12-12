@@ -51,6 +51,8 @@ var defaults = func(c *config) error {
 	return nil
 }
 
+const maxRefreshInterval = 24 * time.Hour
+
 // EnableService specifies that AutoNAT should be allowed to run a NAT service to help
 // other peers determine their own NAT status. The provided Network should not be the
 // default network/dialer of the host passed to `New`, as the NAT system will need to
@@ -91,9 +93,9 @@ func UsingAddresses(addrFunc AddrFunc) Option {
 	}
 }
 
-// WithSchedule configures how agressively probes will be made to verify the
+// WithSchedule configures how aggressively probes will be made to verify the
 // address of the host. retryInterval indicates how often probes should be made
-// when the host lacks confident about its address, while refresh interval
+// when the host lacks confidence about its address, while refreshInterval
 // is the schedule of periodic probes when the host believes it knows its
 // steady-state reachability.
 func WithSchedule(retryInterval, refreshInterval time.Duration) Option {

@@ -47,7 +47,7 @@ func AddrInfosFromP2pAddrs(maddrs ...ma.Multiaddr) ([]AddrInfo, error) {
 // SplitAddr splits a p2p Multiaddr into a transport multiaddr and a peer ID.
 //
 // * Returns a nil transport if the address only contains a /p2p part.
-// * Returns a empty peer ID if the address doesn't contain a /p2p part.
+// * Returns an empty peer ID if the address doesn't contain a /p2p part.
 func SplitAddr(m ma.Multiaddr) (transport ma.Multiaddr, id ID) {
 	if m == nil {
 		return nil, ""
@@ -59,6 +59,24 @@ func SplitAddr(m ma.Multiaddr) (transport ma.Multiaddr, id ID) {
 	}
 	id = ID(p2ppart.RawValue()) // already validated by the multiaddr library.
 	return transport, id
+}
+
+// IDFromP2PAddr extracts the peer ID from a p2p Multiaddr
+func IDFromP2PAddr(m ma.Multiaddr) (ID, error) {
+	if m == nil {
+		return "", ErrInvalidAddr
+	}
+	var lastComponent ma.Component
+	ma.ForEach(m, func(c ma.Component) bool {
+		lastComponent = c
+		return true
+	})
+	if lastComponent.Protocol().Code != ma.P_P2P {
+		return "", ErrInvalidAddr
+	}
+
+	id := ID(lastComponent.RawValue()) // already validated by the multiaddr library.
+	return id, nil
 }
 
 // AddrInfoFromString builds an AddrInfo from the string representation of a Multiaddr
@@ -86,12 +104,12 @@ func AddrInfoFromP2pAddr(m ma.Multiaddr) (*AddrInfo, error) {
 
 // AddrInfoToP2pAddrs converts an AddrInfo to a list of Multiaddrs.
 func AddrInfoToP2pAddrs(pi *AddrInfo) ([]ma.Multiaddr, error) {
-	p2ppart, err := ma.NewComponent("p2p", Encode(pi.ID))
+	p2ppart, err := ma.NewComponent("p2p", pi.ID.String())
 	if err != nil {
 		return nil, err
 	}
 	if len(pi.Addrs) == 0 {
-		return []ma.Multiaddr{p2ppart}, nil
+		return []ma.Multiaddr{p2ppart.Multiaddr()}, nil
 	}
 	addrs := make([]ma.Multiaddr, 0, len(pi.Addrs))
 	for _, addr := range pi.Addrs {
@@ -102,7 +120,7 @@ func AddrInfoToP2pAddrs(pi *AddrInfo) ([]ma.Multiaddr, error) {
 
 func (pi *AddrInfo) Loggable() map[string]interface{} {
 	return map[string]interface{}{
-		"peerID": pi.ID.Pretty(),
+		"peerID": pi.ID.String(),
 		"addrs":  pi.Addrs,
 	}
 }

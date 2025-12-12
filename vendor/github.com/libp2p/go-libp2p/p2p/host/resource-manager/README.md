@@ -47,15 +47,10 @@ limits := cfg.Build(scaledDefaultLimits)
 // The resource manager expects a limiter, se we create one from our limits.
 limiter := rcmgr.NewFixedLimiter(limits)
 
-// (Optional if you want metrics)
-rcmgrObs.MustRegisterWith(prometheus.DefaultRegisterer)
-str, err := rcmgrObs.NewStatsTraceReporter()
-if err != nil {
-  panic(err)
-}
-
+// Metrics are enabled by default. If you want to disable metrics, use the
+// WithMetricsDisabled option
 // Initialize the resource manager
-rm, err := rcmgr.NewResourceManager(limiter, rcmgr.WithTraceReporter(str))
+rm, err := rcmgr.NewResourceManager(limiter, rcmgr.WithMetricsDisabled())
 if err != nil {
   panic(err)
 }
@@ -166,7 +161,7 @@ belong to some service in the system. Hence, this suggests that apart
 from global limits, we can constrain stream usage at finer
 granularity, at the protocol and service level.
 
-Once again, we disinguish between inbound and outbound streams.
+Once again, we distinguish between inbound and outbound streams.
 Inbound streams are initiated by remote peers and consume resources in
 response to network events; controlling inbound stream usage is again
 paramount for protecting the system from overload or attack.
@@ -332,7 +327,7 @@ and streams.
 ### Scaling Limits
 
 When building software that is supposed to run on many different kind of machines,
-with various memory and CPU configurations, it is desireable to have limits that
+with various memory and CPU configurations, it is desirable to have limits that
 scale with the size of the machine.
 
 This is done using the `ScalingLimitConfig`. For every scope, this configuration
@@ -469,8 +464,6 @@ seen the `"resource limit exceeded"` error over time. You can also check the
 `rcmgr_blocked_resources` metric to see how many times the resource manager has
 blocked a resource over time.
 
-![Example graph of blocked resources over time](https://bafkreibul6qipnax5s42abv3jc6bolhd7pju3zbl4rcvdaklmk52f6cznu.ipfs.w3s.link/)
-
 If the resource is blocked by a protocol-level scope, take a look at the various
 resource usages in the metrics. For example, if you run into a new stream being blocked,
 you can check the
@@ -495,7 +488,7 @@ or any other platform that can scrape a prometheus endpoint.
 
 There is also an included Grafana dashboard to help kickstart your
 observability into the resource manager. Find more information about it at
-[here](./obs/grafana-dashboards/README.md).
+[here](./../../../dashboards/resource-manager/README.md).
 
 ## Allowlisting multiaddrs to mitigate eclipse attacks
 
@@ -546,7 +539,7 @@ works best.
 
 ## Examples
 
-Here we consider some concrete examples that can ellucidate the abstract
+Here we consider some concrete examples that can elucidate the abstract
 design as described so far.
 
 ### Stream Lifetime
@@ -583,7 +576,7 @@ More specifically the following constraints apply:
 - the peer scope, where the limits for the peer at the other end of the stream
   apply.
 - the service scope, where the limits of the specific service owning the stream apply.
-- the protcol scope, where the limits of the specific protocol for the stream apply.
+- the protocol scope, where the limits of the specific protocol for the stream apply.
 
 
 The resource transfer that happens in the `SetProtocol` and `SetService`

@@ -23,6 +23,10 @@ type transportConn struct {
 
 var _ transport.CapableConn = &transportConn{}
 
+func (c *transportConn) As(target any) bool {
+	return c.MuxedConn.As(target)
+}
+
 func (t *transportConn) Transport() transport.Transport {
 	return t.transport
 }
@@ -62,4 +66,9 @@ func (t *transportConn) ConnState() network.ConnectionState {
 		Transport:                 "tcp",
 		UsedEarlyMuxerNegotiation: t.usedEarlyMuxerNegotiation,
 	}
+}
+
+func (t *transportConn) CloseWithError(errCode network.ConnErrorCode) error {
+	defer t.scope.Done()
+	return t.MuxedConn.CloseWithError(errCode)
 }

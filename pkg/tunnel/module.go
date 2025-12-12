@@ -203,7 +203,11 @@ func newEdgeTunnel(c *v1alpha1.EdgeTunnelConfig) (*EdgeTunnel, error) {
 	if err != nil {
 		return nil, fmt.Errorf("new id service error: %w", err)
 	}
-	holepunchService, err := holepunch.NewService(h, ids)
+	// Create holepunch service with new API - provide a function that returns public addresses
+	holepunchService, err := holepunch.NewService(h, ids, func() []ma.Multiaddr {
+		// Return the host's listen addresses as public addresses for hole punching
+		return h.Addrs()
+	})
 	if err != nil {
 		return nil, fmt.Errorf("run libp2p holepunch service error: %w", err)
 	}

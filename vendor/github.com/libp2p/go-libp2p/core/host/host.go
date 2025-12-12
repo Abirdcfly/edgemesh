@@ -28,10 +28,10 @@ type Host interface {
 	// Peerstore returns the Host's repository of Peer Addresses and Keys.
 	Peerstore() peerstore.Peerstore
 
-	// Returns the listen addresses of the Host
+	// Addrs returns the listen addresses of the Host
 	Addrs() []ma.Multiaddr
 
-	// Networks returns the Network interface of the Host
+	// Network returns the Network interface of the Host
 	Network() network.Network
 
 	// Mux returns the Mux multiplexing incoming streams to protocol handlers
@@ -41,13 +41,13 @@ type Host interface {
 	// given peer.ID. Connect will absorb the addresses in pi into its internal
 	// peerstore. If there is not an active connection, Connect will issue a
 	// h.Network.Dial, and block until a connection is open, or an error is
-	// returned. // TODO: Relay + NAT.
+	// returned.
 	Connect(ctx context.Context, pi peer.AddrInfo) error
 
 	// SetStreamHandler sets the protocol handler on the Host's Mux.
 	// This is equivalent to:
 	//   host.Mux().SetHandler(proto, handler)
-	// (Threadsafe)
+	// (Thread-safe)
 	SetStreamHandler(pid protocol.ID, handler network.StreamHandler)
 
 	// SetStreamHandlerMatch sets the protocol handler on the Host's Mux
@@ -61,7 +61,7 @@ type Host interface {
 	// NewStream opens a new stream to given peer p, and writes a p2p/protocol
 	// header with given ProtocolID. If there is no connection to p, attempts
 	// to create one. If ProtocolID is "", writes no header.
-	// (Threadsafe)
+	// (Thread-safe)
 	NewStream(ctx context.Context, p peer.ID, pids ...protocol.ID) (network.Stream, error)
 
 	// Close shuts down the host, its Network, and services.

@@ -13,17 +13,11 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-type dialResult struct {
-	Conn transport.CapableConn
-	Addr ma.Multiaddr
-	Err  error
-}
-
 type dialJob struct {
 	addr    ma.Multiaddr
 	peer    peer.ID
 	ctx     context.Context
-	resp    chan dialResult
+	resp    chan transport.DialUpdate
 	timeout time.Duration
 }
 
@@ -45,7 +39,7 @@ type dialLimiter struct {
 	waitingOnPeerLimit map[peer.ID][]*dialJob
 }
 
-type dialfunc func(context.Context, peer.ID, ma.Multiaddr) (transport.CapableConn, error)
+type dialfunc func(context.Context, peer.ID, ma.Multiaddr, chan<- transport.DialUpdate) (transport.CapableConn, error)
 
 func newDialLimiter(df dialfunc) *dialLimiter {
 	fd := ConcurrentFdDials
@@ -70,7 +64,7 @@ func newDialLimiterWithParams(df dialfunc, fdLimit, perPeerLimit int) *dialLimit
 // freeFDToken frees FD token and if there are any schedules another waiting dialJob
 // in it's place
 func (dl *dialLimiter) freeFDToken() {
-	log.Debugf("[limiter] freeing FD token; waiting: %d; consuming: %d", len(dl.waitingOnFd), dl.fdConsuming)
+	log.Debug("[limiter] freeing FD token", "waiting", len(dl.waitingOnFd), "fd_consuming", dl.fdConsuming)
 	dl.fdConsuming--
 
 	for len(dl.waitingOnFd) > 0 {
@@ -97,8 +91,11 @@ func (dl *dialLimiter) freeFDToken() {
 }
 
 func (dl *dialLimiter) freePeerToken(dj *dialJob) {
-	log.Debugf("[limiter] freeing peer token; peer %s; addr: %s; active for peer: %d; waiting on peer limit: %d",
-		dj.peer, dj.addr, dl.activePerPeer[dj.peer], len(dl.waitingOnPeerLimit[dj.peer]))
+	log.Debug("[limiter] freeing peer token",
+		"peer", dj.peer,
+		"addr", dj.addr,
+		"active_for_peer", dl.activePerPeer[dj.peer],
+		"waiting_on_peer_limit", len(dl.waitingOnPeerLimit[dj.peer]))
 	// release tokens in reverse order than we take them
 	dl.activePerPeer[dj.peer]--
 	if dl.activePerPeer[dj.peer] == 0 {
@@ -152,28 +149,40 @@ func (dl *dialLimiter) shouldConsumeFd(addr ma.Multiaddr) bool {
 func (dl *dialLimiter) addCheckFdLimit(dj *dialJob) {
 	if dl.shouldConsumeFd(dj.addr) {
 		if dl.fdConsuming >= dl.fdLimit {
-			log.Debugf("[limiter] blocked dial waiting on FD token; peer: %s; addr: %s; consuming: %d; "+
-				"limit: %d; waiting: %d", dj.peer, dj.addr, dl.fdConsuming, dl.fdLimit, len(dl.waitingOnFd))
+			log.Debug("[limiter] blocked dial waiting on FD token",
+				"peer", dj.peer,
+				"addr", dj.addr,
+				"fd_consuming", dl.fdConsuming,
+				"fd_limit", dl.fdLimit,
+				"waiting", len(dl.waitingOnFd))
 			dl.waitingOnFd = append(dl.waitingOnFd, dj)
 			return
 		}
 
-		log.Debugf("[limiter] taking FD token: peer: %s; addr: %s; prev consuming: %d",
-			dj.peer, dj.addr, dl.fdConsuming)
+		log.Debug("[limiter] taking FD token",
+			"peer", dj.peer,
+			"addr", dj.addr,
+			"prev_consuming", dl.fdConsuming)
 		// take token
 		dl.fdConsuming++
 	}
 
-	log.Debugf("[limiter] executing dial; peer: %s; addr: %s; FD consuming: %d; waiting: %d",
-		dj.peer, dj.addr, dl.fdConsuming, len(dl.waitingOnFd))
+	log.Debug("[limiter] executing dial",
+		"peer", dj.peer,
+		"addr", dj.addr,
+		"fd_consuming", dl.fdConsuming,
+		"waiting", len(dl.waitingOnFd))
 	go dl.executeDial(dj)
 }
 
 func (dl *dialLimiter) addCheckPeerLimit(dj *dialJob) {
 	if dl.activePerPeer[dj.peer] >= dl.perPeerLimit {
-		log.Debugf("[limiter] blocked dial waiting on peer limit; peer: %s; addr: %s; active: %d; "+
-			"peer limit: %d; waiting: %d", dj.peer, dj.addr, dl.activePerPeer[dj.peer], dl.perPeerLimit,
-			len(dl.waitingOnPeerLimit[dj.peer]))
+		log.Debug("[limiter] blocked dial waiting on peer limit",
+			"peer", dj.peer,
+			"addr", dj.addr,
+			"active", dl.activePerPeer[dj.peer],
+			"peer_limit", dl.perPeerLimit,
+			"waiting", len(dl.waitingOnPeerLimit[dj.peer]))
 		wlist := dl.waitingOnPeerLimit[dj.peer]
 		dl.waitingOnPeerLimit[dj.peer] = append(wlist, dj)
 		return
@@ -190,7 +199,7 @@ func (dl *dialLimiter) AddDialJob(dj *dialJob) {
 	dl.lk.Lock()
 	defer dl.lk.Unlock()
 
-	log.Debugf("[limiter] adding a dial job through limiter: %v", dj.addr)
+	log.Debug("[limiter] adding a dial job through limiter", "addr", dj.addr)
 	dl.addCheckPeerLimit(dj)
 }
 
@@ -198,7 +207,7 @@ func (dl *dialLimiter) clearAllPeerDials(p peer.ID) {
 	dl.lk.Lock()
 	defer dl.lk.Unlock()
 	delete(dl.waitingOnPeerLimit, p)
-	log.Debugf("[limiter] clearing all peer dials: %v", p)
+	log.Debug("[limiter] clearing all peer dials", "peer", p)
 	// NB: the waitingOnFd list doesn't need to be cleaned out here, we will
 	// remove them as we encounter them because they are 'cancelled' at this
 	// point
@@ -216,9 +225,13 @@ func (dl *dialLimiter) executeDial(j *dialJob) {
 	dctx, cancel := context.WithTimeout(j.ctx, j.timeout)
 	defer cancel()
 
-	con, err := dl.dialFunc(dctx, j.peer, j.addr)
+	con, err := dl.dialFunc(dctx, j.peer, j.addr, j.resp)
+	kind := transport.UpdateKindDialSuccessful
+	if err != nil {
+		kind = transport.UpdateKindDialFailed
+	}
 	select {
-	case j.resp <- dialResult{Conn: con, Addr: j.addr, Err: err}:
+	case j.resp <- transport.DialUpdate{Kind: kind, Conn: con, Addr: j.addr, Err: err}:
 	case <-j.ctx.Done():
 		if con != nil {
 			con.Close()

@@ -8,17 +8,15 @@ package netroute
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"net"
+	"os"
 	"strconv"
 	"strings"
-
-	"github.com/google/gopacket/routing"
 )
 
 const netdir = "/net"
 
-func New() (routing.Router, error) {
+func New() (Router, error) {
 	rtr := &router{}
 	rtr.ifaces = make(map[int]net.Interface)
 	rtr.addrs = make(map[int]ipAddrs)
@@ -58,7 +56,7 @@ func New() (routing.Router, error) {
 }
 
 func parseIPRoutes() (v4, v6 routeSlice, err error) {
-	buf, err := ioutil.ReadFile(netdir + "/iproute")
+	buf, err := os.ReadFile(netdir + "/iproute")
 	if err != nil {
 		return nil, nil, err
 	}

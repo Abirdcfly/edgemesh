@@ -5,6 +5,7 @@ package transport
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 
 	"github.com/libp2p/go-libp2p/core/network"
@@ -49,10 +50,14 @@ type CapableConn interface {
 // shutdown. NOTE: `Dial` and `Listen` may be called after or concurrently with
 // `Close`.
 //
+// In addition to the Transport interface, transports may implement
+// Resolver or SkipResolver interface. When wrapping/embedding a transport, you should
+// ensure that the Resolver/SkipResolver interface is handled correctly.
+//
 // For a conceptual overview, see https://docs.libp2p.io/concepts/transport/
 type Transport interface {
 	// Dial dials a remote peer. It should try to reuse local listener
-	// addresses if possible but it may choose not to.
+	// addresses if possible, but it may choose not to.
 	Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (CapableConn, error)
 
 	// CanDial returns true if this transport knows how to dial the given
@@ -82,6 +87,14 @@ type Transport interface {
 // multiaddr.
 type Resolver interface {
 	Resolve(ctx context.Context, maddr ma.Multiaddr) ([]ma.Multiaddr, error)
+}
+
+// SkipResolver can be optionally implemented by transports that don't want to
+// resolve or transform the multiaddr. Useful for transports that indirectly
+// wrap other transports (e.g. p2p-circuit). This lets the inner transport
+// specify how a multiaddr is resolved later.
+type SkipResolver interface {
+	SkipResolve(ctx context.Context, maddr ma.Multiaddr) bool
 }
 
 // Listener is an interface closely resembling the net.Listener interface. The
@@ -116,11 +129,85 @@ type TransportNetwork interface {
 	AddTransport(t Transport) error
 }
 
+// GatedMaListener is listener that listens for raw(unsecured and non-multiplexed) incoming connections,
+// gates them with a `connmgr.ConnGater`and creates a resource management scope for them.
+// It can be upgraded to a full libp2p transport listener by the Upgrader.
+//
+// Compared to manet.Listener, this listener creates the resource management scope for the accepted connection.
+type GatedMaListener interface {
+	// Accept waits for and returns the next connection to the listener.
+	Accept() (manet.Conn, network.ConnManagementScope, error)
+
+	// Close closes the listener.
+	// Any blocked Accept operations will be unblocked and return errors.
+	Close() error
+
+	// Multiaddr returns the listener's (local) Multiaddr.
+	Multiaddr() ma.Multiaddr
+
+	// Addr returns the net.Listener's network address.
+	Addr() net.Addr
+}
+
 // Upgrader is a multistream upgrader that can upgrade an underlying connection
 // to a full transport connection (secure and multiplexed).
 type Upgrader interface {
 	// UpgradeListener upgrades the passed multiaddr-net listener into a full libp2p-transport listener.
+	//
+	// Deprecated: Use UpgradeGatedMaListener(upgrader.GateMaListener(manet.Listener)) instead.
 	UpgradeListener(Transport, manet.Listener) Listener
+
+	// GateMaListener creates a GatedMaListener from a manet.Listener. It gates the accepted connection
+	// and creates a resource scope for it.
+	GateMaListener(manet.Listener) GatedMaListener
+
+	// UpgradeGatedMaListener upgrades the passed GatedMaListener into a full libp2p-transport listener.
+	UpgradeGatedMaListener(Transport, GatedMaListener) Listener
+
 	// Upgrade upgrades the multiaddr/net connection into a full libp2p-transport connection.
 	Upgrade(ctx context.Context, t Transport, maconn manet.Conn, dir network.Direction, p peer.ID, scope network.ConnManagementScope) (CapableConn, error)
+}
+
+// DialUpdater provides updates on in progress dials.
+type DialUpdater interface {
+	// DialWithUpdates dials a remote peer and provides updates on the passed channel.
+	DialWithUpdates(context.Context, ma.Multiaddr, peer.ID, chan<- DialUpdate) (CapableConn, error)
+}
+
+// DialUpdateKind indicates the type of DialUpdate event.
+type DialUpdateKind int
+
+const (
+	// UpdateKindDialFailed indicates dial failed.
+	UpdateKindDialFailed DialUpdateKind = iota
+	// UpdateKindDialSuccessful indicates dial succeeded.
+	UpdateKindDialSuccessful
+	// UpdateKindHandshakeProgressed indicates successful completion of the TCP 3-way
+	// handshake
+	UpdateKindHandshakeProgressed
+)
+
+func (k DialUpdateKind) String() string {
+	switch k {
+	case UpdateKindDialFailed:
+		return "DialFailed"
+	case UpdateKindDialSuccessful:
+		return "DialSuccessful"
+	case UpdateKindHandshakeProgressed:
+		return "UpdateKindHandshakeProgressed"
+	default:
+		return fmt.Sprintf("DialUpdateKind<Unknown-%d>", k)
+	}
+}
+
+// DialUpdate is used by DialUpdater to provide dial updates.
+type DialUpdate struct {
+	// Kind is the kind of update event.
+	Kind DialUpdateKind
+	// Addr is the peer's address.
+	Addr ma.Multiaddr
+	// Conn is the resulting connection on success.
+	Conn CapableConn
+	// Err is the reason for dial failure.
+	Err error
 }

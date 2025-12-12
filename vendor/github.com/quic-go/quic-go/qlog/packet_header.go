@@ -43,7 +43,7 @@ type packetHeader struct {
 	KeyPhaseBit  logging.KeyPhaseBit
 	PacketNumber logging.PacketNumber
 
-	Version          logging.VersionNumber
+	Version          logging.Version
 	SrcConnectionID  logging.ConnectionID
 	DestConnectionID logging.ConnectionID
 
@@ -76,7 +76,7 @@ func (h packetHeader) MarshalJSONObject(enc *gojay.Encoder) {
 		enc.Int64Key("packet_number", int64(h.PacketNumber))
 	}
 	if h.Version != 0 {
-		enc.StringKey("version", versionNumber(h.Version).String())
+		enc.StringKey("version", version(h.Version).String())
 	}
 	if h.PacketType != logging.PacketType1RTT {
 		enc.IntKey("scil", h.SrcConnectionID.Len())
@@ -110,14 +110,18 @@ func (h packetHeaderVersionNegotiation) MarshalJSONObject(enc *gojay.Encoder) {
 	enc.StringKey("dcid", h.DestConnectionID.String())
 }
 
-// a minimal header that only outputs the packet type
+// a minimal header that only outputs the packet type, and potentially a packet number
 type packetHeaderWithType struct {
-	PacketType logging.PacketType
+	PacketType   logging.PacketType
+	PacketNumber logging.PacketNumber
 }
 
 func (h packetHeaderWithType) IsNil() bool { return false }
 func (h packetHeaderWithType) MarshalJSONObject(enc *gojay.Encoder) {
 	enc.StringKey("packet_type", packetType(h.PacketType).String())
+	if h.PacketNumber != protocol.InvalidPacketNumber {
+		enc.Int64Key("packet_number", int64(h.PacketNumber))
+	}
 }
 
 // a minimal header that only outputs the packet type

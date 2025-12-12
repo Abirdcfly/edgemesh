@@ -14,7 +14,7 @@ var (
 )
 
 func (c *Client) handleStreamV2(s network.Stream) {
-	log.Debugf("new relay/v2 stream from: %s", s.Conn().RemotePeer())
+	log.Debug("new relay/v2 stream", "remote_peer", s.Conn().RemotePeer())
 
 	s.SetReadDeadline(time.Now().Add(StreamTimeout))
 
@@ -22,6 +22,8 @@ func (c *Client) handleStreamV2(s network.Stream) {
 	defer rd.Close()
 
 	writeResponse := func(status pbv2.Status) error {
+		s.SetWriteDeadline(time.Now().Add(StreamTimeout))
+		defer s.SetWriteDeadline(time.Time{})
 		wr := util.NewDelimitedWriter(s)
 
 		var msg pbv2.StopMessage
@@ -32,11 +34,11 @@ func (c *Client) handleStreamV2(s network.Stream) {
 	}
 
 	handleError := func(status pbv2.Status) {
-		log.Debugf("protocol error: %s (%d)", pbv2.Status_name[int32(status)], status)
+		log.Debug("protocol error", "status_name", pbv2.Status_name[int32(status)], "status_code", status)
 		err := writeResponse(status)
 		if err != nil {
 			s.Reset()
-			log.Debugf("error writing circuit response: %s", err.Error())
+			log.Debug("error writing circuit response", "err", err)
 		} else {
 			s.Close()
 		}
@@ -67,13 +69,13 @@ func (c *Client) handleStreamV2(s network.Stream) {
 	// relay connection and we mark the connection as transient.
 	var stat network.ConnStats
 	if limit := msg.GetLimit(); limit != nil {
-		stat.Transient = true
+		stat.Limited = true
 		stat.Extra = make(map[interface{}]interface{})
 		stat.Extra[StatLimitDuration] = time.Duration(limit.GetDuration()) * time.Second
 		stat.Extra[StatLimitData] = limit.GetData()
 	}
 
-	log.Debugf("incoming relay connection from: %s", src.ID)
+	log.Debug("incoming relay connection", "source_peer", src.ID)
 
 	select {
 	case c.incoming <- accept{

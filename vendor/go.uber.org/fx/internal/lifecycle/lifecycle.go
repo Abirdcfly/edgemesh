@@ -195,7 +195,7 @@ func (l *Lifecycle) Start(ctx context.Context) error {
 	l.startRecords = make(HookRecords, 0, len(l.hooks))
 	l.mu.Unlock()
 
-	var returnState appState = incompleteStart
+	returnState := incompleteStart
 	defer func() {
 		l.mu.Lock()
 		l.state = returnState
@@ -265,7 +265,7 @@ func (l *Lifecycle) Stop(ctx context.Context) error {
 	}
 
 	l.mu.Lock()
-	if l.state != started && l.state != incompleteStart {
+	if l.state != started && l.state != incompleteStart && l.state != starting {
 		defer l.mu.Unlock()
 		return nil
 	}
@@ -280,15 +280,18 @@ func (l *Lifecycle) Stop(ctx context.Context) error {
 
 	l.mu.Lock()
 	l.stopRecords = make(HookRecords, 0, l.numStarted)
+	// Take a snapshot of hook state to avoid races.
+	allHooks := l.hooks[:]
+	numStarted := l.numStarted
 	l.mu.Unlock()
 
 	// Run backward from last successful OnStart.
 	var errs []error
-	for ; l.numStarted > 0; l.numStarted-- {
+	for ; numStarted > 0; numStarted-- {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		hook := l.hooks[l.numStarted-1]
+		hook := allHooks[numStarted-1]
 		if hook.OnStop == nil {
 			continue
 		}

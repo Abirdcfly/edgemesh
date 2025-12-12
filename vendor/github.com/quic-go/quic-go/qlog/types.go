@@ -39,34 +39,9 @@ func (s streamType) String() string {
 	}
 }
 
-// category is the qlog event category.
-type category uint8
+type version protocol.Version
 
-const (
-	categoryConnectivity category = iota
-	categoryTransport
-	categorySecurity
-	categoryRecovery
-)
-
-func (c category) String() string {
-	switch c {
-	case categoryConnectivity:
-		return "connectivity"
-	case categoryTransport:
-		return "transport"
-	case categorySecurity:
-		return "security"
-	case categoryRecovery:
-		return "recovery"
-	default:
-		return "unknown category"
-	}
-}
-
-type versionNumber protocol.VersionNumber
-
-func (v versionNumber) String() string {
+func (v version) String() string {
 	return fmt.Sprintf("%x", uint32(v))
 }
 
@@ -291,6 +266,8 @@ func (t timerType) String() string {
 		return "ack"
 	case logging.TimerTypePTO:
 		return "pto"
+	case logging.TimerTypePathProbe:
+		return "path_probe"
 	default:
 		return "unknown timer type"
 	}
@@ -310,5 +287,62 @@ func (s congestionState) String() string {
 		return "application_limited"
 	default:
 		return "unknown congestion state"
+	}
+}
+
+type ecn logging.ECN
+
+func (e ecn) String() string {
+	switch logging.ECN(e) {
+	case logging.ECTNot:
+		return "Not-ECT"
+	case logging.ECT0:
+		return "ECT(0)"
+	case logging.ECT1:
+		return "ECT(1)"
+	case logging.ECNCE:
+		return "CE"
+	default:
+		return "unknown ECN"
+	}
+}
+
+type ecnState logging.ECNState
+
+func (e ecnState) String() string {
+	switch logging.ECNState(e) {
+	case logging.ECNStateTesting:
+		return "testing"
+	case logging.ECNStateUnknown:
+		return "unknown"
+	case logging.ECNStateCapable:
+		return "capable"
+	case logging.ECNStateFailed:
+		return "failed"
+	default:
+		return "unknown ECN state"
+	}
+}
+
+type ecnStateTrigger logging.ECNStateTrigger
+
+func (e ecnStateTrigger) String() string {
+	switch logging.ECNStateTrigger(e) {
+	case logging.ECNTriggerNoTrigger:
+		return ""
+	case logging.ECNFailedNoECNCounts:
+		return "ACK doesn't contain ECN marks"
+	case logging.ECNFailedDecreasedECNCounts:
+		return "ACK decreases ECN counts"
+	case logging.ECNFailedLostAllTestingPackets:
+		return "all ECN testing packets declared lost"
+	case logging.ECNFailedMoreECNCountsThanSent:
+		return "ACK contains more ECN counts than ECN-marked packets sent"
+	case logging.ECNFailedTooFewECNCounts:
+		return "ACK contains fewer new ECN counts than acknowledged ECN-marked packets"
+	case logging.ECNFailedManglingDetected:
+		return "ECN mangling detected"
+	default:
+		return "unknown ECN state trigger"
 	}
 }

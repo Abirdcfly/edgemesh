@@ -96,7 +96,7 @@ func (o provideOption) apply(mod *module) {
 
 type privateOption struct{}
 
-// Private is an option that can be passed as an argument to [Provide] to
+// Private is an option that can be passed as an argument to [Provide] or [Supply] to
 // restrict access to the constructors being provided. Specifically,
 // corresponding constructors can only be used within the current module
 // or modules the current module contains. Other modules that contain this
@@ -131,18 +131,18 @@ func runProvide(c container, p provide, opts ...dig.ProvideOption) error {
 	case annotationError:
 		// fx.Annotate failed. Turn it into an Fx error.
 		return fmt.Errorf(
-			"encountered error while applying annotation using fx.Annotate to %s: %+v",
+			"encountered error while applying annotation using fx.Annotate to %s: %w",
 			fxreflect.FuncName(constructor.target), constructor.err)
 
 	case annotated:
 		ctor, err := constructor.Build()
 		if err != nil {
-			return fmt.Errorf("fx.Provide(%v) from:\n%+vFailed: %v", constructor, p.Stack, err)
+			return fmt.Errorf("fx.Provide(%v) from:\n%+vFailed: %w", constructor, p.Stack, err)
 		}
 
 		opts = append(opts, dig.LocationForPC(constructor.FuncPtr))
 		if err := c.Provide(ctor, opts...); err != nil {
-			return fmt.Errorf("fx.Provide(%v) from:\n%+vFailed: %v", constructor, p.Stack, err)
+			return fmt.Errorf("fx.Provide(%v) from:\n%+vFailed: %w", constructor, p.Stack, err)
 		}
 
 	case Annotated:
@@ -159,7 +159,7 @@ func runProvide(c container, p provide, opts ...dig.ProvideOption) error {
 		}
 
 		if err := c.Provide(ann.Target, opts...); err != nil {
-			return fmt.Errorf("fx.Provide(%v) from:\n%+vFailed: %v", ann, p.Stack, err)
+			return fmt.Errorf("fx.Provide(%v) from:\n%+vFailed: %w", ann, p.Stack, err)
 		}
 
 	default:
@@ -180,7 +180,7 @@ func runProvide(c container, p provide, opts ...dig.ProvideOption) error {
 		}
 
 		if err := c.Provide(constructor, opts...); err != nil {
-			return fmt.Errorf("fx.Provide(%v) from:\n%+vFailed: %v", fxreflect.FuncName(constructor), p.Stack, err)
+			return fmt.Errorf("fx.Provide(%v) from:\n%+vFailed: %w", fxreflect.FuncName(constructor), p.Stack, err)
 		}
 	}
 	return nil

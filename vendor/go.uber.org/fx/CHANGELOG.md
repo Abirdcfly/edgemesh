@@ -1,21 +1,119 @@
 ---
-sidebarDepth: 0
-search: false
+search:
+  exclude: true
 ---
 
 # Changelog
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
-and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.24.0](https://github.com/uber-go/fx/compare/v1.23.0...v1.24.0) - 2025-05-13
+
+### Added
+- A new event `fxevent.BeforeRun` is now emitted before Fx runs a constructor, 
+  decorator, or supply/replace stub.
+
+### Changed
+- Clearer error messages are now used when annotation building fails.
+
+## [1.23.0](https://github.com/uber-go/fx/compare/v1.22.2...v1.22.3) - 2024-10-11
+
+### Added
+- Added `Runtime` to `fxevent.Run` event, which stores the runtime of
+  a constructor or a decorator that's run, including functions created
+  by `fx.Supply` and `fx.Replace`.
+
+### Changed
+- Overhauled the documentation website. (https://uber-go.github.io/fx/)
+
+## [1.22.2](https://github.com/uber-go/fx/compare/v1.22.1...v1.22.2) - 2024-08-07
+
+### Fixed
+- A deadlock with the relayer in signal receivers.
+
+### Changed
+- Upgrade Dig dependency to v1.18.0
+
+## [1.22.1](https://github.com/uber-go/fx/compare/v1.22.0...v1.22.1) - 2024-06-25
+
+### Fixed
+- Fx apps will only listen to signals when `.Run()`, `.Wait()`, or `.Done()`
+  are called, fixing a regression introduced in v1.19.0.
+
+## [1.22.0](https://github.com/uber-go/fx/compare/v1.21.1...v1.22.0) - 2024-05-30
+
+### Added
+- Add `fx.Self` which can be passed to the `fx.As` annotation to signify
+  that a type should be provided as itself.
+- Add `fxtest.EnforceTimeout` that can be passed to `fxtest.NewLifecycle`
+  to force `Start` and `Stop` to return context errors when hook context expires.
+
+### Changed
+- `fx.Private` can now be used with `fx.Supply`.
+
+### Fixed
+- Fx apps will no longer listen to OS signals when they are stopped,
+  solving blocking issues in programs that depended on OS signals
+  after an Fx app stops.
+
+## [1.21.1](https://github.com/uber-go/fx/compare/v1.21.0...v1.21.1) - 2024-04-24
+
+### Changed
+- Register Fx provides (e.g. fx.Lifecycle, fx.Shutdowner, fx.DotGraph) before
+  user provides, to increase likelihood of successful custom logger creation.
+
+## [1.21.0](https://github.com/uber-go/fx/compare/v1.20.1...v1.21.0) - 2024-03-13
+
+### Added
+- fxtest: Add WithTestLogger option that uses a `testing.TB` as the
+  Fx event logger.
+- An fxevent logger that can log events using a slog logger has been added.
+
+### Changed
+- Upgrade Dig dependency to v1.17.1
+
+## [1.20.1](https://github.com/uber-go/fx/compare/v1.20.0...v1.20.1) - 2023-10-17
+
+### Added
+- Provided, Decorated, Supplied, and Replaced events now include a trace
+  of module locations through which the option was given to the App.
+- wasi support.
+
+## [1.20.0](https://github.com/uber-go/fx/compare/v1.19.3...v1.20.0) - 2023-06-12
+
+### Added
+- A new event `fxevent.Run` is now emitted when Fx runs a constructor, decorator,
+  or supply/replace stub.
+
+### Changed
+- `fx.Populate` now works with `fx.Annotate`.
+- Upgrade Dig dependency to v1.17.0.
+
+## [1.19.3](https://github.com/uber-go/fx/compare/v1.19.2...v1.19.3) - 2023-04-17
+
+### Changed
+- Fixed several typos in docs.
+- WASM build support.
+- Annotating In and Out structs with From/As annotations generated invalid results.
+  The annotation check now blocks this.
+- `Shutdown`: Support calling from `Invoke`.
+
+### Deprecated
+- Deprecate `ShutdownTimeout` option.
+
+### Fixed
+- Respect Shutdowner ExitCode from calling `Run`.
 
 ## [1.19.2](https://github.com/uber-go/fx/compare/v1.19.1...v1.19.2) - 2023-02-21
+
 ### Changed
-- Upgrade Dig dependency to v1.16.1.
+- Update Dig dependency to v1.16.1.
 
+## [1.19.1](https://github.com/uber-go/fx/compare/v1.19.0...v1.19.1) - 2023-01-10
 
-## [1.19.1](https://github.com/uber-go/fx/compare/v1.18.0...v1.19.1) - 2023-01-10
 ### Changed
 - Calling `fx.Stop()` after the `App` has already stopped no longer errors out.
 
@@ -24,6 +122,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
   after running for startTimeout duration.
 
 ## [1.19.0](https://github.com/uber-go/fx/compare/v1.18.2...v1.19.0) - 2023-01-03
+
 ### Added
 - `fx.RecoverFromPanics` Option which allows Fx to recover from user-provided constructors
   and invoked functions.

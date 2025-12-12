@@ -10,18 +10,19 @@ import (
 	mrand "math/rand"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
 	pool "github.com/libp2p/go-buffer-pool"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 )
 
 var log = logging.Logger("ping")
 
 const (
-	PingSize    = 32
-	pingTimeout = time.Second * 60
+	PingSize     = 32
+	pingTimeout  = 10 * time.Second
+	pingDuration = 30 * time.Second
 
 	ID = "/ipfs/ping/1.0.0"
 
@@ -40,17 +41,19 @@ func NewPingService(h host.Host) *PingService {
 
 func (p *PingService) PingHandler(s network.Stream) {
 	if err := s.Scope().SetService(ServiceName); err != nil {
-		log.Debugf("error attaching stream to ping service: %s", err)
+		log.Debug("error attaching stream to ping service", "err", err)
 		s.Reset()
 		return
 	}
 
 	if err := s.Scope().ReserveMemory(PingSize, network.ReservationPriorityAlways); err != nil {
-		log.Debugf("error reserving memory for ping stream: %s", err)
+		log.Debug("error reserving memory for ping stream", "err", err)
 		s.Reset()
 		return
 	}
 	defer s.Scope().ReleaseMemory(PingSize)
+
+	s.SetDeadline(time.Now().Add(pingDuration))
 
 	buf := pool.Get(PingSize)
 	defer pool.Put(buf)
@@ -66,7 +69,7 @@ func (p *PingService) PingHandler(s network.Stream) {
 			log.Debug("ping timeout")
 		case err, ok := <-errCh:
 			if ok {
-				log.Debug(err)
+				log.Debug("ping error", "err", err)
 			} else {
 				log.Error("ping loop failed without error")
 			}
@@ -111,20 +114,20 @@ func pingError(err error) chan Result {
 // Ping pings the remote peer until the context is canceled, returning a stream
 // of RTTs or errors.
 func Ping(ctx context.Context, h host.Host, p peer.ID) <-chan Result {
-	s, err := h.NewStream(network.WithUseTransient(ctx, "ping"), p, ID)
+	s, err := h.NewStream(network.WithAllowLimitedConn(ctx, "ping"), p, ID)
 	if err != nil {
 		return pingError(err)
 	}
 
 	if err := s.Scope().SetService(ServiceName); err != nil {
-		log.Debugf("error attaching stream to ping service: %s", err)
+		log.Debug("error attaching stream to ping service", "err", err)
 		s.Reset()
 		return pingError(err)
 	}
 
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {
-		log.Errorf("failed to get cryptographic random: %s", err)
+		log.Error("failed to get cryptographic random", "err", err)
 		s.Reset()
 		return pingError(err)
 	}
@@ -158,18 +161,17 @@ func Ping(ctx context.Context, h host.Host, p peer.ID) <-chan Result {
 			}
 		}
 	}()
-	go func() {
+	context.AfterFunc(ctx, func() {
 		// forces the ping to abort.
-		<-ctx.Done()
 		s.Reset()
-	}()
+	})
 
 	return out
 }
 
 func ping(s network.Stream, randReader io.Reader) (time.Duration, error) {
 	if err := s.Scope().ReserveMemory(2*PingSize, network.ReservationPriorityAlways); err != nil {
-		log.Debugf("error reserving memory for ping stream: %s", err)
+		log.Debug("error reserving memory for ping stream", "err", err)
 		s.Reset()
 		return 0, err
 	}

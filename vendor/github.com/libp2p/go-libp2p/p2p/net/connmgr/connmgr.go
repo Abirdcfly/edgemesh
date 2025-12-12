@@ -2,6 +2,7 @@ package connmgr
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -12,7 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -72,7 +73,7 @@ type segments struct {
 }
 
 func (ss *segments) get(p peer.ID) *segment {
-	return ss.buckets[byte(p[len(p)-1])]
+	return ss.buckets[p[len(p)-1]]
 }
 
 func (ss *segments) countPeers() (count int) {
@@ -140,11 +141,6 @@ func NewConnManager(low, hi int, opts ...Option) (*BasicConnMgr, error) {
 
 	cm.ctx, cm.cancel = context.WithCancel(context.Background())
 
-	if cfg.emergencyTrim {
-		// When we're running low on memory, immediately trigger a trim.
-		cm.unregisterMemoryWatcher = registerWatchdog(cm.memoryEmergency)
-	}
-
 	decay, _ := NewDecayer(cfg.decayer, cm)
 	cm.decayer = decay
 
@@ -153,18 +149,18 @@ func NewConnManager(low, hi int, opts ...Option) (*BasicConnMgr, error) {
 	return cm, nil
 }
 
-// memoryEmergency is run when we run low on memory.
-// Close connections until we right the low watermark.
-// We don't pay attention to the silence period or the grace period.
-// We try to not kill protected connections, but if that turns out to be necessary, not connection is safe!
-func (cm *BasicConnMgr) memoryEmergency() {
+// ForceTrim trims connections down to the low watermark ignoring silence period, grace period,
+// or protected status. It prioritizes closing Unprotected connections. If after closing all
+// unprotected connections, we still have more than lowWaterMark connections, it'll close
+// protected connections.
+func (cm *BasicConnMgr) ForceTrim() {
 	connCount := int(cm.connCount.Load())
 	target := connCount - cm.cfg.lowWater
 	if target < 0 {
-		log.Warnw("Low on memory, but we only have a few connections", "num", connCount, "low watermark", cm.cfg.lowWater)
+		log.Warn("Low on memory, but we only have a few connections", "num", connCount, "low_watermark", cm.cfg.lowWater)
 		return
 	} else {
-		log.Warnf("Low on memory. Closing %d connections.", target)
+		log.Warn("Low on memory. Closing connections.", "count", target)
 	}
 
 	cm.trimMutex.Lock()
@@ -173,8 +169,9 @@ func (cm *BasicConnMgr) memoryEmergency() {
 
 	// Trim connections without paying attention to the silence period.
 	for _, c := range cm.getConnsToCloseEmergency(target) {
-		log.Infow("low on memory. closing conn", "peer", c.RemotePeer())
-		c.Close()
+		log.Info("low on memory. closing conn", "peer", c.RemotePeer())
+
+		c.CloseWithError(network.ConnGarbageCollected)
 	}
 
 	// finally, update the last trim time.
@@ -237,6 +234,17 @@ func (cm *BasicConnMgr) IsProtected(id peer.ID, tag string) (protected bool) {
 
 	_, protected = tags[tag]
 	return protected
+}
+
+func (cm *BasicConnMgr) CheckLimit(systemLimit connmgr.GetConnLimiter) error {
+	if cm.cfg.highWater > systemLimit.GetConnLimit() {
+		return fmt.Errorf(
+			"conn manager high watermark limit: %d, exceeds the system connection limit of: %d",
+			cm.cfg.highWater,
+			systemLimit.GetConnLimit(),
+		)
+	}
+	return nil
 }
 
 // peerInfo stores metadata for a given peer.
@@ -375,8 +383,8 @@ func (cm *BasicConnMgr) doTrim() {
 func (cm *BasicConnMgr) trim() {
 	// do the actual trim.
 	for _, c := range cm.getConnsToClose() {
-		log.Debugw("closing conn", "peer", c.RemotePeer())
-		c.Close()
+		log.Debug("closing conn", "peer", c.RemotePeer())
+		c.CloseWithError(network.ConnGarbageCollected)
 	}
 }
 
@@ -580,7 +588,7 @@ func (cm *BasicConnMgr) UntagPeer(p peer.ID, tag string) {
 
 	pi, ok := s.peers[p]
 	if !ok {
-		log.Info("tried to remove tag from untracked peer: ", p)
+		log.Debug("tried to remove tag from untracked peer", "peer", p, "tag", tag)
 		return
 	}
 
@@ -652,7 +660,7 @@ func (nn *cmNotifee) cm() *BasicConnMgr {
 // Connected is called by notifiers to inform that a new connection has been established.
 // The notifee updates the BasicConnMgr to start tracking the connection. If the new connection
 // count exceeds the high watermark, a trim may be triggered.
-func (nn *cmNotifee) Connected(n network.Network, c network.Conn) {
+func (nn *cmNotifee) Connected(_ network.Network, c network.Conn) {
 	cm := nn.cm()
 
 	p := c.RemotePeer()
@@ -681,7 +689,7 @@ func (nn *cmNotifee) Connected(n network.Network, c network.Conn) {
 
 	_, ok = pinfo.conns[c]
 	if ok {
-		log.Error("received connected notification for conn we are already tracking: ", p)
+		log.Error("received connected notification for conn we are already tracking", "peer", p)
 		return
 	}
 
@@ -691,7 +699,7 @@ func (nn *cmNotifee) Connected(n network.Network, c network.Conn) {
 
 // Disconnected is called by notifiers to inform that an existing connection has been closed or terminated.
 // The notifee updates the BasicConnMgr accordingly to stop tracking the connection, and performs housekeeping.
-func (nn *cmNotifee) Disconnected(n network.Network, c network.Conn) {
+func (nn *cmNotifee) Disconnected(_ network.Network, c network.Conn) {
 	cm := nn.cm()
 
 	p := c.RemotePeer()
@@ -701,13 +709,13 @@ func (nn *cmNotifee) Disconnected(n network.Network, c network.Conn) {
 
 	cinf, ok := s.peers[p]
 	if !ok {
-		log.Error("received disconnected notification for peer we are not tracking: ", p)
+		log.Error("received disconnected notification for peer we are not tracking", "peer", p)
 		return
 	}
 
 	_, ok = cinf.conns[c]
 	if !ok {
-		log.Error("received disconnected notification for conn we are not tracking: ", p)
+		log.Error("received disconnected notification for conn we are not tracking", "peer", p)
 		return
 	}
 
@@ -719,7 +727,7 @@ func (nn *cmNotifee) Disconnected(n network.Network, c network.Conn) {
 }
 
 // Listen is no-op in this implementation.
-func (nn *cmNotifee) Listen(n network.Network, addr ma.Multiaddr) {}
+func (nn *cmNotifee) Listen(_ network.Network, _ ma.Multiaddr) {}
 
 // ListenClose is no-op in this implementation.
-func (nn *cmNotifee) ListenClose(n network.Network, addr ma.Multiaddr) {}
+func (nn *cmNotifee) ListenClose(_ network.Network, _ ma.Multiaddr) {}

@@ -77,6 +77,15 @@ var (
 		},
 		[]string{"outcome", "num_dials"},
 	)
+	dialLatency = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: metricNamespace,
+			Name:      "dial_latency_seconds",
+			Help:      "time taken to establish connection with the peer",
+			Buckets:   []float64{0.001, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75, 1, 2},
+		},
+		[]string{"outcome", "num_dials"},
+	)
 	dialRankingDelay = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Namespace: metricNamespace,
@@ -84,6 +93,30 @@ var (
 			Help:      "delay introduced by the dial ranking logic",
 			Buckets:   []float64{0.001, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75, 1, 2},
 		},
+	)
+	blackHoleSuccessCounterState = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: metricNamespace,
+			Name:      "black_hole_filter_state",
+			Help:      "State of the black hole filter",
+		},
+		[]string{"name"},
+	)
+	blackHoleSuccessCounterSuccessFraction = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: metricNamespace,
+			Name:      "black_hole_filter_success_fraction",
+			Help:      "Fraction of successful dials among the last n requests",
+		},
+		[]string{"name"},
+	)
+	blackHoleSuccessCounterNextRequestAllowedAfter = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: metricNamespace,
+			Name:      "black_hole_filter_next_request_allowed_after",
+			Help:      "Number of requests after which the next request will be allowed",
+		},
+		[]string{"name"},
 	)
 	collectors = []prometheus.Collector{
 		connsOpened,
@@ -94,6 +127,10 @@ var (
 		connHandshakeLatency,
 		dialsPerPeer,
 		dialRankingDelay,
+		dialLatency,
+		blackHoleSuccessCounterSuccessFraction,
+		blackHoleSuccessCounterState,
+		blackHoleSuccessCounterNextRequestAllowedAfter,
 	}
 )
 
@@ -101,9 +138,10 @@ type MetricsTracer interface {
 	OpenedConnection(network.Direction, crypto.PubKey, network.ConnectionState, ma.Multiaddr)
 	ClosedConnection(network.Direction, time.Duration, network.ConnectionState, ma.Multiaddr)
 	CompletedHandshake(time.Duration, network.ConnectionState, ma.Multiaddr)
-	FailedDialing(ma.Multiaddr, error)
-	DialCompleted(success bool, totalDials int)
+	FailedDialing(ma.Multiaddr, error, error)
+	DialCompleted(success bool, totalDials int, latency time.Duration)
 	DialRankingDelay(d time.Duration)
+	UpdatedBlackHoleSuccessCounter(name string, state BlackHoleState, nextProbeAfter int, successFraction float64)
 }
 
 type metricsTracer struct{}
@@ -138,7 +176,7 @@ func appendConnectionState(tags []string, cs network.ConnectionState) []string {
 		// This shouldn't happen, unless the transport doesn't properly set the Transport field in the ConnectionState.
 		tags = append(tags, "unknown")
 	} else {
-		tags = append(tags, string(cs.Transport))
+		tags = append(tags, cs.Transport)
 	}
 	// These might be empty, depending on the transport.
 	// For example, QUIC doesn't set security nor muxer.
@@ -188,18 +226,28 @@ func (m *metricsTracer) CompletedHandshake(t time.Duration, cs network.Connectio
 	connHandshakeLatency.WithLabelValues(*tags...).Observe(t.Seconds())
 }
 
-func (m *metricsTracer) FailedDialing(addr ma.Multiaddr, err error) {
+func (m *metricsTracer) FailedDialing(addr ma.Multiaddr, dialErr error, cause error) {
 	transport := metricshelper.GetTransport(addr)
 	e := "other"
-	if errors.Is(err, context.Canceled) {
-		e = "canceled"
-	} else if errors.Is(err, context.DeadlineExceeded) {
+	// dial deadline exceeded or the the parent contexts deadline exceeded
+	if errors.Is(dialErr, context.DeadlineExceeded) || errors.Is(cause, context.DeadlineExceeded) {
 		e = "deadline"
+	} else if errors.Is(dialErr, context.Canceled) {
+		// dial was cancelled.
+		if errors.Is(cause, context.Canceled) {
+			// parent context was canceled
+			e = "application canceled"
+		} else if errors.Is(cause, errConcurrentDialSuccessful) {
+			e = "canceled: concurrent dial successful"
+		} else {
+			// something else
+			e = "canceled: other"
+		}
 	} else {
-		nerr, ok := err.(net.Error)
+		nerr, ok := dialErr.(net.Error)
 		if ok && nerr.Timeout() {
 			e = "timeout"
-		} else if strings.Contains(err.Error(), "connect: connection refused") {
+		} else if strings.Contains(dialErr.Error(), "connect: connection refused") {
 			e = "connection refused"
 		}
 	}
@@ -212,7 +260,7 @@ func (m *metricsTracer) FailedDialing(addr ma.Multiaddr, err error) {
 	dialError.WithLabelValues(*tags...).Inc()
 }
 
-func (m *metricsTracer) DialCompleted(success bool, totalDials int) {
+func (m *metricsTracer) DialCompleted(success bool, totalDials int, latency time.Duration) {
 	tags := metricshelper.GetStringSlice()
 	defer metricshelper.PutStringSlice(tags)
 	if success {
@@ -230,8 +278,21 @@ func (m *metricsTracer) DialCompleted(success bool, totalDials int) {
 	}
 	*tags = append(*tags, numDials)
 	dialsPerPeer.WithLabelValues(*tags...).Inc()
+	dialLatency.WithLabelValues(*tags...).Observe(latency.Seconds())
 }
 
 func (m *metricsTracer) DialRankingDelay(d time.Duration) {
 	dialRankingDelay.Observe(d.Seconds())
+}
+
+func (m *metricsTracer) UpdatedBlackHoleSuccessCounter(name string, state BlackHoleState,
+	nextProbeAfter int, successFraction float64) {
+	tags := metricshelper.GetStringSlice()
+	defer metricshelper.PutStringSlice(tags)
+
+	*tags = append(*tags, name)
+
+	blackHoleSuccessCounterState.WithLabelValues(*tags...).Set(float64(state))
+	blackHoleSuccessCounterSuccessFraction.WithLabelValues(*tags...).Set(successFraction)
+	blackHoleSuccessCounterNextRequestAllowedAfter.WithLabelValues(*tags...).Set(float64(nextProbeAfter))
 }

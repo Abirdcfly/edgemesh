@@ -21,6 +21,7 @@
 package dig
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -122,7 +123,7 @@ func newParamList(ctype reflect.Type, c containerStore) (paramList, error) {
 
 	pl := paramList{
 		ctype:  ctype,
-		Params: make([]param, 0, numArgs),
+		Params: make([]param, numArgs),
 	}
 
 	for i := 0; i < numArgs; i++ {
@@ -130,7 +131,7 @@ func newParamList(ctype reflect.Type, c containerStore) (paramList, error) {
 		if err != nil {
 			return pl, newErrInvalidInput(fmt.Sprintf("bad argument %d", i+1), err)
 		}
-		pl.Params = append(pl.Params, p)
+		pl.Params[i] = p
 	}
 
 	return pl, nil
@@ -291,7 +292,7 @@ func (ps paramSingle) Build(c containerStore) (reflect.Value, error) {
 
 		// If we're missing dependencies but the parameter itself is optional,
 		// we can just move on.
-		if _, ok := err.(errMissingDependencies); ok && ps.Optional {
+		if errors.As(err, new(errMissingDependencies)) && ps.Optional {
 			return reflect.Zero(ps.Type), nil
 		}
 
@@ -606,7 +607,7 @@ func (pt paramGroupedSlice) callGroupProviders(c containerStore) (int, error) {
 		providers := c.getGroupProviders(pt.Group, pt.Type.Elem())
 		itemCount += len(providers)
 		for _, n := range providers {
-			if err := n.Call(c); err != nil {
+			if err := n.Call(n.OrigScope()); err != nil {
 				return 0, errParamGroupFailed{
 					CtorID: n.ID(),
 					Key:    key{group: pt.Group, t: pt.Type.Elem()},

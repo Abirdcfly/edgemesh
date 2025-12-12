@@ -2,6 +2,7 @@ package record
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
@@ -12,11 +13,8 @@ import (
 
 	pool "github.com/libp2p/go-buffer-pool"
 
-	"github.com/multiformats/go-varint"
 	"google.golang.org/protobuf/proto"
 )
-
-//go:generate protoc --proto_path=$PWD:$PWD/../.. --go_out=. --go_opt=Mpb/envelope.proto=./pb pb/envelope.proto
 
 // Envelope contains an arbitrary []byte payload, signed by a libp2p peer.
 //
@@ -87,7 +85,7 @@ func Seal(rec Record, privateKey crypto.PrivKey) (*Envelope, error) {
 
 // ConsumeEnvelope unmarshals a serialized Envelope and validates its
 // signature using the provided 'domain' string. If validation fails, an error
-// is returned, along with the unmarshalled envelope so it can be inspected.
+// is returned, along with the unmarshalled envelope, so it can be inspected.
 //
 // On success, ConsumeEnvelope returns the Envelope itself, as well as the inner payload,
 // unmarshalled into a concrete Record type. The actual type of the returned Record depends
@@ -129,7 +127,7 @@ func ConsumeEnvelope(data []byte, domain string) (envelope *Envelope, rec Record
 
 // ConsumeTypedEnvelope unmarshals a serialized Envelope and validates its
 // signature. If validation fails, an error is returned, along with the unmarshalled
-// envelope so it can be inspected.
+// envelope, so it can be inspected.
 //
 // Unlike ConsumeEnvelope, ConsumeTypedEnvelope does not try to automatically determine
 // the type of Record to unmarshal the Envelope's payload into. Instead, the caller provides
@@ -189,7 +187,7 @@ func UnmarshalEnvelope(data []byte) (*Envelope, error) {
 }
 
 // Marshal returns a byte slice containing a serialized protobuf representation
-// of a Envelope.
+// of an Envelope.
 func (e *Envelope) Marshal() (res []byte, err error) {
 	defer func() { catch.HandlePanic(recover(), &err, "libp2p envelope marshal") }()
 	key, err := crypto.PublicKeyToProto(e.PublicKey)
@@ -272,7 +270,7 @@ func makeUnsigned(domain string, payloadType []byte, payload []byte) ([]byte, er
 		fields = [][]byte{[]byte(domain), payloadType, payload}
 
 		// fields are prefixed with their length as an unsigned varint. we
-		// compute the lengths before allocating the sig buffer so we know how
+		// compute the lengths before allocating the sig buffer, so we know how
 		// much space to add for the lengths
 		flen = make([][]byte, len(fields))
 		size = 0
@@ -280,7 +278,7 @@ func makeUnsigned(domain string, payloadType []byte, payload []byte) ([]byte, er
 
 	for i, f := range fields {
 		l := len(f)
-		flen[i] = varint.ToUvarint(uint64(l))
+		flen[i] = binary.AppendUvarint(nil, uint64(l))
 		size += l + len(flen[i])
 	}
 
