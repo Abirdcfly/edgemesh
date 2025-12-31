@@ -122,6 +122,9 @@ func findLocalCIDR(cli clientset.Interface) (string, error) {
 		return "", fmt.Errorf("failed to get Node %s, error: %v", nodeName, err)
 	}
 	podCIDR := node.Spec.PodCIDR
+	if podCIDR == "" {
+		podCIDR = node.Annotations["kubeedge.io/pod-cidr-ipv4"]
+	}
 	return podCIDR, nil
 }
 
@@ -147,6 +150,24 @@ func (mesh *MeshAdapter) Run() {
 }
 
 func (mesh *MeshAdapter) WatchRoute() error {
+	if mesh.HostCIDR == "" {
+		// 云端节点
+		for _, cidr := range mesh.Edge {
+			err := cni.AddRouteToTun(cidr, defaults.TunDeviceName)
+			if err != nil {
+				klog.Errorf("failed to add route to TunDev, error: %v", err)
+				continue
+			}
+		}
+		for _, cidr := range mesh.Cloud {
+			// Insert IPtable rule to make sure Other CNIs do not make SNAT
+			_, err := mesh.IptInterface.EnsureRule(utiliptables.Prepend, utiliptables.TableNAT, utiliptables.ChainPostrouting, "1", "-s", cidr, "-o", defaults.TunDeviceName, "-j", "ACCEPT")
+			if err != nil {
+				return fmt.Errorf("failed to insert iptable rule, error: %v", err)
+			}
+		}
+		return nil
+	}
 	// insert basic route to Tundev
 	allCIDR := append(mesh.Edge, mesh.Cloud...)
 	for _, cidr := range allCIDR {
@@ -163,12 +184,11 @@ func (mesh *MeshAdapter) WatchRoute() error {
 		}
 	}
 	// Insert IPtable rule to make sure Other CNIs do not make SNAT
-	rule, err := mesh.IptInterface.EnsureRule("-I", "nat", "POSTROUTING", "1", "-s", mesh.HostCIDR, "!", "-o", "docker0", "-j", "ACCEPT")
+	_, err := mesh.IptInterface.EnsureRule(utiliptables.Prepend, utiliptables.TableNAT, utiliptables.ChainPostrouting, "1", "-s", mesh.HostCIDR, "-o", defaults.TunDeviceName, "-j", "ACCEPT")
 	if err != nil {
 		return fmt.Errorf("failed to insert iptable rule, error: %v", err)
 	}
 
-	klog.Infof("Insert iptable rule :%s", rule)
 	return nil
 	// TODO： watch the subNetwork event and if the cidr changes ,apply that change to node
 }

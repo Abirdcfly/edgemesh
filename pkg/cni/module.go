@@ -50,11 +50,11 @@ func (cni *EdgeCni) Shutdown() {
 	}
 }
 
-// Register edgeproxy to beehive modules
+// Register edgecni to beehive modules
 func Register(c *v1alpha1.EdgeCNIConfig, cli *clients.Clients) error {
 	cni, err := newEdgeCni(c, cli)
 	if err != nil {
-		return fmt.Errorf("register module edgeproxy error: %v", err)
+		return fmt.Errorf("register module edgecni error: %v", err)
 	}
 	core.Register(cni)
 	return nil
