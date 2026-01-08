@@ -1,8 +1,10 @@
 package util
 
 import (
+	"net"
 	"os"
 
+	v1 "k8s.io/api/core/v1"
 	clientcmdv1 "k8s.io/client-go/tools/clientcmd/api/v1"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/yaml"
@@ -83,4 +85,32 @@ func SaveKubeConfigFile(kubeClientConfig *clientcmdv1.Config) error {
 	}
 
 	return nil
+}
+
+func IsEdgeNode(node *v1.Node) bool {
+	if node == nil {
+		return false
+	}
+	_, exist := node.Labels["node-role.kubernetes.io/edge"]
+	return exist
+}
+
+func GetNodeIP(node *v1.Node) string {
+	for _, addr := range node.Status.Addresses {
+		if addr.Type == v1.NodeInternalIP {
+			if IsValidIPv4(addr.Address) {
+				return addr.Address
+			}
+		}
+	}
+	return ""
+}
+
+// IsValidIPv4 验证字符串是否为有效的 IPv4 地址
+func IsValidIPv4(ip string) bool {
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return false
+	}
+	return parsedIP.To4() != nil
 }

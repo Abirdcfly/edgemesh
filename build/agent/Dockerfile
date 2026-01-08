@@ -22,5 +22,6 @@ RUN update-alternatives --install /sbin/iptables iptables /sbin/iptables-nft 50
 RUN update-alternatives --install /sbin/iptables iptables /sbin/iptables-wrapper 100 \
     --slave /sbin/iptables-restore iptables-restore /sbin/iptables-wrapper \
     --slave /sbin/iptables-save iptables-save /sbin/iptables-wrapper
+RUN apk update && apk add --no-cache ipset iproute2
 
 ENTRYPOINT ["edgemesh-agent"]

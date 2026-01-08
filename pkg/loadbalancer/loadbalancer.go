@@ -608,6 +608,7 @@ func (lb *LoadBalancer) OnServiceSynced() {
 
 func (lb *LoadBalancer) OnEndpointsAdd(endpoints *v1.Endpoints) {
 	portsToEndpoints := buildPortsToEndpointsMap(endpoints)
+	klog.V(4).InfoS("all endpoints", "portsToEndpoints", portsToEndpoints)
 
 	lb.lock.Lock()
 	defer lb.lock.Unlock()

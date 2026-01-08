@@ -33,7 +33,7 @@ func (m *NetifManager) EnsureBridgeDevice(name string) (bool, error) {
 		for _, addr := range m.Addrs {
 			err := m.AddrAdd(l, addr)
 			if err != nil {
-				klog.V(4).ErrorS(err, "addr %s add error", addr.String())
+				klog.V(4).ErrorS(err, fmt.Sprintf("addr %s add error", addr.String()))
 			}
 		}
 		return true, nil
